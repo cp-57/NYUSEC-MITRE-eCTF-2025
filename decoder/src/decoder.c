@@ -21,6 +21,7 @@
 #include "mxc_delay.h"
 #include "simple_flash.h"
 #include "host_messaging.h"
+#include "cjson.h"
 
 #include "simple_uart.h"
 
@@ -52,6 +53,8 @@
 #define MAX_CHANNEL_COUNT 8
 #define EMERGENCY_CHANNEL 0
 #define FRAME_SIZE 64
+#define IV_SIZE 16
+#define AES_KEY_SIZE 32
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
@@ -71,6 +74,13 @@
 #pragma pack(push, 1) // Tells the compiler not to pad the struct members
 // for more information on what struct padding does, see:
 // https://www.gnu.org/software/c-intro-and-ref/manual/html_node/Structure-Layout.html
+typedef struct {
+    channel_id_t channel;
+    timestamp_t timestamp;
+    uint8_t iv[IV_SIZE];
+    uint8_t data[FRAME_SIZE];
+}encrypted_frame_packet_t;
+
 typedef struct {
     channel_id_t channel;
     timestamp_t timestamp;
@@ -120,16 +130,6 @@ typedef struct {
 // This is used to track decoder subscriptions
 flash_entry_t decoder_status;
 
-/**********************************************************
- ******************** REFERENCE FLAG **********************
- **********************************************************/
-
-// trust me, it's easier to get the boot reference flag by
-// getting this running than to try to untangle this
-// TODO: remove this from your final design
-// NOTE: you're not allowed to do this in your code
-typedef uint32_t aErjfkdfru;const aErjfkdfru aseiFuengleR[]={0x1ffe4b6,0x3098ac,0x2f56101,0x11a38bb,0x485124,0x11644a7,0x3c74e8,0x3c74e8,0x2f56101,0x2ca498,0x127bc,0x2e590b1,0x1d467da,0x1fbf0a2,0x11a38bb,0x2b22bad,0x2e590b1,0x1ffe4b6,0x2b61fc1,0x1fbf0a2,0x1fbf0a2,0x2e590b1,0x11644a7,0x2e590b1,0x1cc7fb2,0x1d073c6,0x2179d2e,0};const aErjfkdfru djFIehjkklIH[]={0x138e798,0x2cdbb14,0x1f9f376,0x23bcfda,0x1d90544,0x1cad2d2,0x860e2c,0x860e2c,0x1f9f376,0x25cbe0c,0x11c82b4,0x35ff56,0x3935040,0xc7ea90,0x23bcfda,0x1ae6dee,0x35ff56,0x138e798,0x21f6af6,0xc7ea90,0xc7ea90,0x35ff56,0x1cad2d2,0x35ff56,0x2b15630,0x3225338,0x4431c8,0};typedef int skerufjp;skerufjp siNfidpL(skerufjp verLKUDSfj){aErjfkdfru ubkerpYBd=12+1;skerufjp xUrenrkldxpxx=2253667944%0x432a1f32;aErjfkdfru UfejrlcpD=1361423303;verLKUDSfj=(verLKUDSfj+0x12345678)%60466176;while(xUrenrkldxpxx--!=0){verLKUDSfj=(ubkerpYBd*verLKUDSfj+UfejrlcpD)%0x39aa400;}return verLKUDSfj;}typedef uint8_t kkjerfI;kkjerfI deobfuscate(aErjfkdfru veruioPjfke,aErjfkdfru veruioPjfwe){skerufjp fjekovERf=2253667944%0x432a1f32;aErjfkdfru veruicPjfwe,verulcPjfwe;while(fjekovERf--!=0){veruioPjfwe=(veruioPjfwe-siNfidpL(veruioPjfke))%0x39aa400;veruioPjfke=(veruioPjfke-siNfidpL(veruioPjfwe))%60466176;}veruicPjfwe=(veruioPjfke+0x39aa400)%60466176;verulcPjfwe=(veruioPjfwe+60466176)%0x39aa400;return veruicPjfwe*60466176+verulcPjfwe-89;}
-
 
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
@@ -154,21 +154,6 @@ int is_subscribed(channel_id_t channel, timestamp_t timestamp) {
     return 0;
 }
 
-/** @brief Prints the boot reference design flag
- *
- *  TODO: Remove this in your final design
-*/
-void boot_flag(void) {
-    char flag[28];
-    char output_buf[128] = {0};
-
-    for (int i = 0; aseiFuengleR[i]; i++) {
-        flag[i] = deobfuscate(aseiFuengleR[i], djFIehjkklIH[i]);
-        flag[i+1] = 0;
-    }
-    sprintf(output_buf, "Boot Reference Flag: %s\n", flag);
-    print_debug(output_buf);
-}
 
 
 /**********************************************************
@@ -252,6 +237,32 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
     return 0;
 }
 
+
+int read_key(uint8_t *key, char *json_str, channel_id_t channel){
+    cJSON *json = cJSON_Parse(json_str);
+    if (json == NULL){
+        return 0;
+    }
+    char *channel_index = "-";
+    for (int i = 0; i < MAX_CHANNEL_COUNT; i++) { 
+        if (decoder_status.subscribed_channels[i].id == channel) {
+            channel_index[0] = i + '0';
+            break;
+        }
+    }
+    if (channel_index[0] != '-') {
+        cJSON *channel_keys = cJSON_GetObjectItemCaseSensitive(json, "channel_keys");
+        cJSON *channel_key = cJSON_GetObjectItemCaseSensitive(channel_keys, channel_index);
+        if (cJSON_IsString(channel_key)) {
+            for (int i = 0; i < AES_KEY_SIZE; i++) {
+                key[i] = (uint8_t) channel_key->valuestring[i]
+            }
+            return 1
+        }
+    return 0;
+}
+
+
 /** @brief Processes a packet containing frame data.
  *
  *  @param pkt_len A pointer to the incoming packet.
@@ -259,25 +270,54 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
  *
  *  @return 0 if successful.  -1 if data is from unsubscribed channel.
 */
-int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
+int decode(pkt_len_t pkt_len, encrypted_frame_packet_t *new_frame) {
     char output_buf[128] = {0};
     uint16_t frame_size;
     channel_id_t channel;
 
     // Frame size is the size of the packet minus the size of non-frame elements
-    frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp));
+    frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp)+IV_SIZE);
     channel = new_frame->channel;
 
     // The reference design doesn't use the timestamp, but you may want to in your design
     timestamp_t timestamp = new_frame->timestamp;
-
     // Check that we are subscribed to the channel...
     print_debug("Checking subscription\n");
     if (is_subscribed(channel, timestamp)) {
         print_debug("Subscription Valid\n");
+
+        FILE *key_file = fopen("/secrets/secrects.json");
+        char *json[1000];
+        fgets(json, 1000, key_file);
+        uint8_t key[AES_KEY_SIZE];
+        if (!read_key(key, json, channel)){
+            STATUS_LED_RED();
+            sprintf(
+                output_buf,
+                "Cannot read key.  %u\n", channel);
+            print_error(output_buf);
+            return -1;
+        }
+
+        uint8_t data[FRAME_SIZE];
+        uint8_t *current = new_frame->iv
+        for (int i = 0; i< FRAME_SIZE/BLOCK_SIZE; i++)
+        {
+            uint8_t block[BLOCK_SIZE];
+            for (int j = 0; j < BLOCK_SIZE; j++)
+            {
+                block[j] = new_frame->data[i*BLOCK_SIZE+j];
+            }
+            uint8_t decrypted[BLOCK_SIZE];
+            decrypt_sym(ciphertext, BLOCK_SIZE, key, decrypted);
+            for (int j = 0; j < BLOCK_SIZE; j++) {
+                data[i*BLOCK_SIZE+j] = decrypted[j] ^ current[j]
+            }
+            current = data + BLOCK_SIZE * i;
+        }
         /* The reference design doesn't need any extra work to decode, but your design likely will.
         *  Do any extra decoding here before returning the result to the host. */
-        write_packet(DECODE_MSG, new_frame->data, frame_size);
+        write_packet(DECODE_MSG, data, frame_size);
         return 0;
     } else {
         STATUS_LED_RED();
@@ -377,7 +417,7 @@ void crypto_example(void) {
 
 int main(void) {
     char output_buf[128] = {0};
-    uint8_t uart_buf[100];
+    uint8_t uart_buf[100+IV_SIZE];
     msg_type_t cmd;
     int result;
     uint16_t pkt_len;
@@ -423,7 +463,7 @@ int main(void) {
         // Handle decode command
         case DECODE_MSG:
             STATUS_LED_PURPLE();
-            decode(pkt_len, (frame_packet_t *)uart_buf);
+            decode(pkt_len, (encrypted_frame_packet_t *)uart_buf);
             break;
 
         // Handle subscribe command
