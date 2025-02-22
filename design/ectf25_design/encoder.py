@@ -13,6 +13,8 @@ Copyright: Copyright (c) 2025 The MITRE Corporation
 import argparse
 import struct
 import json
+from wolfcrypt.ciphers import Aes
+import os
 
 
 class Encoder:
@@ -51,10 +53,44 @@ class Encoder:
 
         :returns: The encoded frame, which will be sent to the Decoder
         """
-        # TODO: encode the satellite frames so that they meet functional and
-        #  security requirements
+    
+        # Get channel-specific key
+        channel_key = self.channel_keys.get(channel, self.channel_keys[0])
+        
+        # Generate random IV
+        iv = os.urandom(16)
+        
+        # Encrypt frame data
+        self.aes.iv = iv
+        padded_frame = self._pad_data(frame)
+        encrypted_frame = self.aes.encrypt(padded_frame)
+        
+        # Maintain original return format but with encrypted frame
+        return struct.pack("<IQ", channel, timestamp) + iv + encrypted_frame
+    
+    
+    
+    
+    def __init__(self, secrets: bytes):
+        secrets = json.loads(secrets)
+        
+        # Extract encryption keys from secrets
+        self.aes_key = bytes.fromhex(secrets["aes_key"])
+        self.channel_keys = {
+            int(ch): bytes.fromhex(key) 
+            for ch, key in secrets["channel_keys"].items()
+        }
+        
+        # Initialize AES cipher
+        self.aes = Aes(self.aes_key, Aes.CBC)
+        
 
-        return struct.pack("<IQ", channel, timestamp) + frame
+    def _pad_data(self, data: bytes) -> bytes:
+        """Add PKCS7 padding to ensure block alignment"""
+        pad_len = 16 - (len(data) % 16)
+        return data + bytes([pad_len] * pad_len)
+
+            
 
 
 def main():
