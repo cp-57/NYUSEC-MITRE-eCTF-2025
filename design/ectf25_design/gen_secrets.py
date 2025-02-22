@@ -13,6 +13,7 @@ Copyright: Copyright (c) 2025 The MITRE Corporation
 import argparse
 import json
 from pathlib import Path
+import os
 
 from loguru import logger
 
@@ -29,15 +30,20 @@ def gen_secrets(channels: list[int]) -> bytes:
 
     :returns: Contents of the secrets file
     """
-    # TODO: Update this function to generate any system-wide secrets needed by
-    #   your design
-
-    # Create the secrets object
-    # You can change this to generate any secret material
-    # The secrets file will never be shared with attackers
+    # Generate a random AES key
+    aes_key = os.urandom(16).hex()
+    
+    # Generate channel-specific keys
+    channel_keys = {
+        0: os.urandom(16).hex()  # Emergency broadcast channel key
+    }
+    for channel in channels:
+        channel_keys[channel] = os.urandom(16).hex()
+    
+    # Create the secrets object with encryption keys
     secrets = {
-        "channels": channels,
-        "some_secrets": "EXAMPLE",
+        "aes_key": aes_key,
+        "channel_keys": channel_keys,
     }
 
     # NOTE: if you choose to use JSON for your file type, you will not be able to
