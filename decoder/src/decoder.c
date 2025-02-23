@@ -147,7 +147,7 @@ int is_subscribed(channel_id_t channel, timestamp_t timestamp) {
     }
     // Check if the decoder has has a subscription
     for (int i = 0; i < MAX_CHANNEL_COUNT; i++) { 
-        if (decoder_status.subscribed_channels[i].id == channel && decoder_status.subscribed_channels[i].active && timestamp >= decoder_status.subscribed_channels[i].start && timestamp <= decoder_status.subscribed_channels[i].end) {
+        if (decoder_status.subscribed_channels[i].id == channel && decoder_status.subscribed_channels[i].active && timestamp >= decoder_status.subscribed_channels[i].start_timestamp && timestamp <= decoder_status.subscribed_channels[i].end_timestamp) {
             return 1;
         }
     }
