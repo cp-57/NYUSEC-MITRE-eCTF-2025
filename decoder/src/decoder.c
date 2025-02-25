@@ -390,7 +390,6 @@ int main(void) {
 
             // Print the boot flag
             // TODO: Remove this from your design
-            boot_flag();
             list_channels();
             break;
 
