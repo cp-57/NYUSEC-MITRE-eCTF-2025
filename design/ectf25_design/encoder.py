@@ -1,23 +1,10 @@
-"""
-Author: Ben Janis
-Date: 2025
-
-This source file is part of an example system for MITRE's 2025 Embedded System CTF
-(eCTF). This code is being provided only for educational purposes for the 2025 MITRE
-eCTF competition, and may not meet MITRE standards for quality. Use this code at your
-own risk!
-
-Copyright: Copyright (c) 2025 The MITRE Corporation
-"""
-
 import argparse
 import struct
 import json
 import os
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
-from Crypto.Random import get_random_bytes
-
+# uses ECB mode
 
 class Encoder:
     def __init__(self, secrets: bytes):
@@ -51,10 +38,7 @@ class Encoder:
         :param channel: 16b unsigned channel number. Channel 0 is the emergency
             broadcast that must be decodable by all channels.
         :param frame: Frame to encode. Max frame size is 64 bytes.
-        :param timestamp: 64b timestamp to use for encoding. **NOTE**: This value may
-            have no relation to the current timestamp, so you should not compare it
-            against the current time. The timestamp is guaranteed to strictly
-            monotonically increase (always go up) with subsequent calls to encode.
+        :param timestamp: 64b timestamp to use for encoding.
 
         :returns: The encoded frame, which will be sent to the Decoder.
         """
@@ -64,18 +48,15 @@ class Encoder:
         # Get channel-specific key (or default to channel 0 key)
         channel_key = self.channel_keys.get(channel, self.channel_keys[0])
 
-        # Generate a random IV (AES block size is 16 bytes)
-        iv = get_random_bytes(16)
-
-        # Create a fresh AES cipher object for encryption
-        cipher = AES.new(channel_key, AES.MODE_CBC, iv)
+        # Create an AES cipher object in ECB mode (NO IV required)
+        cipher = AES.new(channel_key, AES.MODE_ECB)
 
         # Pad frame to 16-byte boundary and encrypt
         padded_frame = pad(frame, AES.block_size)
         encrypted_frame = cipher.encrypt(padded_frame)
 
-        # Pack the encoded frame into the expected format
-        return struct.pack("<IQ", channel, timestamp) + iv + encrypted_frame
+        # Pack the encoded frame into the expected format (WITHOUT IV)
+        return struct.pack("<IQ", channel, timestamp) + encrypted_frame
 
 
 def main():
@@ -101,4 +82,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
