@@ -16,6 +16,10 @@
 #include "simple_crypto.h"
 #include <stdint.h>
 #include <string.h>
+#include "mxc_device.h"
+#include "mxc_delay.h"
+#include "mxc_sys.h"
+#include "aes.h"
 
 
 /******************************** FUNCTION PROTOTYPES ********************************/
@@ -89,6 +93,40 @@ int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintex
     }
     return 0;
 }
+// int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintext) {
+//     int result = 0;
+
+//     // Ensure valid length (must be a multiple of AES block size)
+//     if (len <= 0 || len % BLOCK_SIZE != 0) {
+//         return -1;
+//     }
+
+//     // Configure AES decryption request
+//     mxc_aes_req_t aes_req;
+//     aes_req.length = len / 4;  // Convert byte length to 32-bit word length
+//     aes_req.inputData = (uint32_t*)ciphertext;
+//     aes_req.resultData = (uint32_t*)plaintext;
+//     aes_req.keySize = MXC_AES_256BITS;  // Change to 128 or 192 if needed
+//     aes_req.encryption = MXC_AES_DECRYPT_EXT_KEY;
+
+//     // Disable AES peripheral before setting key
+//     MXC_AES->ctrl = 0x00;
+
+//     // Set AES key size and load the key into hardware
+//     MXC_AES_SetKeySize(MXC_AES_256BITS);  // Update if using AES-128 or AES-192
+//     MXC_AES_SetExtKey(key, MXC_AES_256BITS);
+
+//     // Enable AES peripheral
+//     MXC_AES->ctrl |= 0x01;
+
+//     // Perform hardware AES decryption
+//     result = MXC_AES_Decrypt(&aes_req);
+//     if (result != E_SUCCESS) {
+//         return result;  // Return error code
+//     }
+
+//     return 0;  // Success
+// }
 
 /** @brief Hashes arbitrary-length data
  *

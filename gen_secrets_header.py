@@ -33,13 +33,18 @@ def gen_secrets(channels: list[int]) -> str:
 
     :returns: String containing the contents of the `secrets.h` file.
     """
-    # Generate a random AES key (16 bytes for AES-128, 32 bytes for AES-256)
+    # Generate a random AES key (16 bytes for AES-128)
     aes_key = os.urandom(16)  # 16 bytes = 128-bit key
 
-    # Generate channel-specific keys
+    # Generate channel-specific encryption keys
     channel_keys = {0: os.urandom(16)}  # Emergency broadcast channel key
     for channel in channels:
         channel_keys[channel] = os.urandom(16)
+        
+    # Generate channel-specific HMAC keys (32 bytes for SHA-256)
+    hmac_keys = {0: os.urandom(32)}  # Emergency broadcast HMAC key
+    for channel in channels:
+        hmac_keys[channel] = os.urandom(32)
 
     # Start building the C header file content
     header_content = """#ifndef SECRETS_H
@@ -50,11 +55,20 @@ def gen_secrets(channels: list[int]) -> str:
 // AES Encryption Key
 static const uint8_t AES_KEY[16] = { """ + bytes_to_c_array(aes_key) + """ };
 
-// Channel-Specific Keys
+// Channel-Specific Encryption Keys
 """
 
     for channel, key in channel_keys.items():
         header_content += f"static const uint8_t CHANNEL_{channel}_KEY[16] = {{ {bytes_to_c_array(key)} }};\n"
+
+    header_content += "\n// Channel-Specific HMAC Keys\n"
+    
+    for channel, key in hmac_keys.items():
+        header_content += f"static const uint8_t CHANNEL_{channel}_HMAC[32] = {{ {bytes_to_c_array(key)} }};\n"
+    
+    # Add a default HMAC key for channels not explicitly defined
+    default_hmac = os.urandom(32)
+    header_content += f"\nstatic const uint8_t DEFAULT_HMAC[32] = {{ {bytes_to_c_array(default_hmac)} }};\n"
 
     header_content += "\n#endif // SECRETS_H\n"
 

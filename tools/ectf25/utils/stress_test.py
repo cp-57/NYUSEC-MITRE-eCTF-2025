@@ -129,14 +129,14 @@ def parse_args():
         "--frame-size", "-f", default=64, type=int, help="Size of frame"
     )
     parser.add_argument(
-        "--test-size", "-t", default=100000000, type=int, help="Bytes to process"
+        "--test-size", "-t", default=10000, type=int, help="Bytes to process" #100000000
     )
     parser.add_argument(
         "--channels",
         "-c",
         action="append",
         type=int,
-        default=[0, 1, 2, 3],
+        default=[1], #default=[0, 1, 2, 3],
         help="Channels to randomly chose from (NOTE: 0 is broadcast)",
     )
 

@@ -40,10 +40,18 @@ def gen_secrets(channels: list[int]) -> bytes:
     for channel in channels:
         channel_keys[channel] = os.urandom(16).hex()
     
-    # Create the secrets object with encryption keys
+    # Generate channel-specific HMAC keys (32 bytes for SHA-256)
+    hmac_keys = {
+        0: os.urandom(32).hex()  # Emergency broadcast HMAC key
+    }
+    for channel in channels:
+        hmac_keys[channel] = os.urandom(32).hex()
+    
+    # Create the secrets object with encryption and HMAC keys
     secrets = {
         "aes_key": aes_key,
         "channel_keys": channel_keys,
+        "hmac_keys": hmac_keys,
     }
 
     # NOTE: if you choose to use JSON for your file type, you will not be able to

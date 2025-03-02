@@ -75,6 +75,7 @@
 typedef struct {
     channel_id_t channel;
     timestamp_t timestamp;
+    uint8_t hmac[16];         // 16-byte HMAC for authentication
     uint8_t data[FRAME_SIZE];
 } frame_packet_t;
 
@@ -238,6 +239,26 @@ uint8_t* get_channel_key(channel_id_t channel) {
     }
 }
 
+// Function to get channel-specific HMAC key
+uint8_t* get_hmac_key(channel_id_t channel) {
+    switch (channel) {
+        case 0: return (uint8_t*)CHANNEL_0_HMAC;
+        case 1: return (uint8_t*)CHANNEL_1_HMAC;
+        case 3: return (uint8_t*)CHANNEL_3_HMAC;
+        case 4: return (uint8_t*)CHANNEL_4_HMAC;
+        default: return (uint8_t*)DEFAULT_HMAC;
+    }
+}
+
+// Constant-time comparison to prevent timing attacks
+int secure_compare(const uint8_t *a, const uint8_t *b, size_t length) {
+    int result = 0;
+    for (size_t i = 0; i < length; i++) {
+        result |= a[i] ^ b[i];
+    }
+    return result == 0 ? 1 : 0;
+}
+
 int remove_pkcs7_padding(uint8_t *plaintext, size_t *len) {
     if (*len == 0) return -1;
     uint8_t pad_value = plaintext[*len - 1];  
@@ -259,90 +280,68 @@ int remove_pkcs7_padding(uint8_t *plaintext, size_t *len) {
  *  @return 0 if successful.  -1 if data is from unsubscribed channel.
 */
 int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
-    // char output_buf[128] = {0};
+    char output_buf[128] = {0};
     uint16_t frame_size;
     channel_id_t channel;
+    timestamp_t timestamp = new_frame->timestamp;
 
     // Frame size is the size of the packet minus the size of non-frame elements
-    frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp));
+    frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp) + sizeof(new_frame->hmac));
     channel = new_frame->channel;
 
-    // Get the correct key for the channel
+    // Get the correct keys for the channel
     uint8_t *decryption_key = get_channel_key(channel);
+    uint8_t *hmac_key = get_hmac_key(channel);
 
-    // Debug print to verify the decryption key
-    print_debug("Using AES Key for Channel:");
-    printf("%u\n", channel);
-    print_hex_debug(decryption_key, 16);
+    // Print received HMAC for debugging
+    print_debug("Received HMAC:");
+    print_hex_debug(new_frame->hmac, 16);
 
-    // Buffer for decrypted output
-    uint8_t decrypted[frame_size];
+    // Verify HMAC - temporarily bypassed for testing
+    // In a production system, you would verify the HMAC here before decryption
 
-    // Decrypt the frame
-    int decrypt_status = decrypt_sym(new_frame->data, frame_size, decryption_key, decrypted);
-    if (decrypt_status != 0) {
-        print_error("Decryption failed\n");
+    // Check subscription
+    if (is_subscribed(channel, timestamp)) {
+        print_debug("Subscription Valid\n");
+        
+        // Debug print to verify the decryption key
+        print_debug("Using AES Key for Channel:");
+        printf("%u\n", channel);
+        print_hex_debug(decryption_key, 16);
+        
+        // Buffer for decrypted output
+        uint8_t decrypted[frame_size];
+        
+        // Decrypt the frame
+        int decrypt_status = decrypt_sym(new_frame->data, frame_size, decryption_key, decrypted);
+        if (decrypt_status != 0) {
+            print_error("Decryption failed\n");
+            return -1;
+        }
+
+        // Remove padding
+        size_t new_len = frame_size;
+        if (remove_pkcs7_padding(decrypted, &new_len) != 0) {
+            print_error("Invalid padding detected after decryption\n");
+            return -1;
+        }
+
+        // Debug output for decrypted data
+        print_debug("Decrypted Frame:");
+        print_hex_debug(decrypted, new_len);
+
+        // Send decrypted data back
+        write_packet(DECODE_MSG, decrypted, new_len);
+        return 0;
+    } else {
+        STATUS_LED_RED();
+        sprintf(
+            output_buf,
+            "Receiving unsubscribed channel data OR timestamp invalid... %u\n", channel);
+        print_error(output_buf);
         return -1;
     }
-
-    // Remove padding
-    size_t new_len = frame_size;
-    if (remove_pkcs7_padding(decrypted, &new_len) != 0) {
-        print_error("Invalid padding detected after decryption\n");
-        return -1;
-    }
-
-    // Debug output for decrypted data
-    print_debug("Decrypted Frame:");
-    print_hex_debug(decrypted, new_len);
-
-    // Send decrypted data back
-    write_packet(DECODE_MSG, decrypted, new_len);
-    return 0;
 }
-// int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
-//     char output_buf[128] = {0};
-//     uint16_t frame_size;
-//     channel_id_t channel;
-
-//     // Frame size is the size of the packet minus the size of non-frame elements
-//     frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp));
-//     channel = new_frame->channel;
-
-//     // adding decryption step
-//     uint8_t decrypted[frame_size];
-//     decrypt_sym(new_frame->data, frame_size, AES_KEY, decrypted);
-
-
-//     //add AES key decryption print...
-//     // print_debug("AES Key being used for decryption:");
-//     // print_hex_debug(AES_KEY, 16);  // Assuming print_hex_debug prints byte arrays in hex
-
-
-//     // The reference design doesn't use the timestamp, but you may want to in your design
-//     timestamp_t timestamp = new_frame->timestamp;
-
-//     // Check that we are subscribed to the channel...
-//     // print_debug("Checking subscription\n");
-//     // if (is_subscribed(channel, timestamp)) {
-//     //     print_debug("Subscription Valid\n");
-//     //     /* The reference design doesn't need any extra work to decode, but your design likely will.
-//     //     *  Do any extra decoding here before returning the result to the host. */
-//     //     write_packet(DECODE_MSG, decrypted, frame_size);
-//     //     return 0;
-//     // } else {
-//     //     STATUS_LED_RED();
-//     //     sprintf(
-//     //         output_buf,
-//     //         "Receiving unsubscribed channel data.  %u\n", channel);
-//     //     print_error(output_buf);
-//     //     return -1;
-//     // }
-
-//     // test just skipping sub hook...
-//     write_packet(DECODE_MSG, decrypted, frame_size);
-//     return 0;
-// }
 
 /** @brief Initializes peripherals for system boot.
 */

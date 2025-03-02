@@ -4,7 +4,7 @@ import json
 import os
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
-# uses ECB mode
+from Crypto.Hash import HMAC, SHA256
 
 class Encoder:
     def __init__(self, secrets: bytes):
@@ -20,11 +20,18 @@ class Encoder:
         except json.JSONDecodeError:
             raise ValueError("Invalid secrets file format")
 
-        # Extract encryption keys from secrets
         self.aes_key = bytes.fromhex(secrets["aes_key"])
         self.channel_keys = {
             int(ch): bytes.fromhex(key)
             for ch, key in secrets["channel_keys"].items()
+        }
+        
+        if "hmac_keys" not in secrets:
+            raise ValueError("HMAC keys not found in secrets file")
+            
+        self.hmac_keys = {
+            int(ch): bytes.fromhex(key)
+            for ch, key in secrets["hmac_keys"].items()
         }
 
     def encode(self, channel: int, frame: bytes, timestamp: int) -> bytes:
@@ -45,18 +52,23 @@ class Encoder:
         if len(frame) > 64:
             raise ValueError("Frame size exceeds 64 bytes")
 
-        # Get channel-specific key (or default to channel 0 key)
         channel_key = self.channel_keys.get(channel, self.channel_keys[0])
+        hmac_key = self.hmac_keys.get(channel, self.hmac_keys[0])
 
-        # Create an AES cipher object in ECB mode (NO IV required)
         cipher = AES.new(channel_key, AES.MODE_ECB)
 
-        # Pad frame to 16-byte boundary and encrypt
         padded_frame = pad(frame, AES.block_size)
         encrypted_frame = cipher.encrypt(padded_frame)
-
-        # Pack the encoded frame into the expected format (WITHOUT IV)
-        return struct.pack("<IQ", channel, timestamp) + encrypted_frame
+        
+        header = struct.pack("<IQ", channel, timestamp)
+        
+        h = HMAC.new(hmac_key, digestmod=SHA256)
+        h.update(header + encrypted_frame)
+        mac = h.digest()
+        
+        mac_truncated = mac[:16]
+        
+        return header + mac_truncated + encrypted_frame
 
 
 def main():
