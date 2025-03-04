@@ -2,8 +2,7 @@ import argparse
 import struct
 import json
 import os
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad
+from Crypto.Cipher import ChaCha20_Poly1305
 # uses ECB mode
 
 class Encoder:
@@ -20,10 +19,10 @@ class Encoder:
         except json.JSONDecodeError:
             raise ValueError("Invalid secrets file format")
 
-        # Extract encryption keys from secrets
-        self.aes_key = bytes.fromhex(secrets["aes_key"])
+        # Extract encryption keys from secrets - ChaCha20-Poly1305 needs 32-byte keys
+        self.chacha_key = bytes.fromhex(secrets["aes_key"]).ljust(32, b'\0')  # Ensure 32 bytes
         self.channel_keys = {
-            int(ch): bytes.fromhex(key)
+            int(ch): bytes.fromhex(key).ljust(32, b'\0')  # Ensure 32 bytes
             for ch, key in secrets["channel_keys"].items()
         }
 
@@ -48,15 +47,21 @@ class Encoder:
         # Get channel-specific key (or default to channel 0 key)
         channel_key = self.channel_keys.get(channel, self.channel_keys[0])
 
-        # Create an AES cipher object in ECB mode (NO IV required)
-        cipher = AES.new(channel_key, AES.MODE_ECB)
+        # Create a nonce using timestamp and channel
+        nonce = struct.pack("<QQ", timestamp, channel)  # 16 bytes nonce
 
-        # Pad frame to 16-byte boundary and encrypt
-        padded_frame = pad(frame, AES.block_size)
-        encrypted_frame = cipher.encrypt(padded_frame)
+        # Create a ChaCha20-Poly1305 cipher object
+        cipher = ChaCha20_Poly1305.new(key=channel_key, nonce=nonce)
 
-        # Pack the encoded frame into the expected format (WITHOUT IV)
-        return struct.pack("<IQ", channel, timestamp) + encrypted_frame
+        # Add channel and timestamp as associated data for authentication
+        associated_data = struct.pack("<IQ", channel, timestamp)
+        cipher.update(associated_data)
+
+        # Encrypt frame and get authentication tag
+        ciphertext, tag = cipher.encrypt_and_digest(frame)
+
+        # Pack the encoded frame into the expected format: channel (4) + timestamp (8) + ciphertext + tag (16)
+        return struct.pack("<IQ", channel, timestamp) + ciphertext + tag
 
 
 def main():

@@ -29,14 +29,11 @@ LINKERFILE=firmware.ld
 STARTUPFILE=startup_firmware.S
 ENTRY=firmware_startup
 
-# ****************** eCTF Crypto Example *******************
-# Uncomment the commented lines below and comment the disable
-# lines to enable the eCTF Crypto Example.
-# WolfSSL must be included in this directory as wolfssl/
-# WolfSSL can be downloaded from: https://www.wolfssl.com/download/
-
-# Disable Crypto Example
-# CRYPTO_EXAMPLE=0
-
-# Enable Crypto Example
+# ****************** eCTF Crypto Implementation *******************
+# Enable Crypto with ChaCha20
 CRYPTO_EXAMPLE=1
+
+# Add ChaCha20-specific flags
+PROJ_CFLAGS += -DUSE_CHACHA20
+# Add any additional optimization flags if needed
+MXC_OPTIMIZE_CFLAGS += -O2

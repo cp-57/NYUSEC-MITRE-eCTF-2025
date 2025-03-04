@@ -229,26 +229,14 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
 
 // Add functions to aid in decoding
 uint8_t* get_channel_key(channel_id_t channel) {
+    // Note: Keys are now 32 bytes for ChaCha20
     switch (channel) {
         case 0: return (uint8_t*)CHANNEL_0_KEY;
         case 1: return (uint8_t*)CHANNEL_1_KEY;
         case 3: return (uint8_t*)CHANNEL_3_KEY;
         case 4: return (uint8_t*)CHANNEL_4_KEY;
-        default: return (uint8_t*)AES_KEY;
+        default: return (uint8_t*)CHACHA_KEY;  // Renamed from AES_KEY
     }
-}
-
-int remove_pkcs7_padding(uint8_t *plaintext, size_t *len) {
-    if (*len == 0) return -1;
-    uint8_t pad_value = plaintext[*len - 1];  
-    if (pad_value > 16 || pad_value == 0) return -1;  
-
-    for (int i = 0; i < pad_value; i++) {
-        if (plaintext[*len - 1 - i] != pad_value) return -1;
-    }
-
-    *len -= pad_value;
-    return 0;
 }
 
 /** @brief Processes a packet containing frame data.
@@ -259,90 +247,55 @@ int remove_pkcs7_padding(uint8_t *plaintext, size_t *len) {
  *  @return 0 if successful.  -1 if data is from unsubscribed channel.
 */
 int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
-    // char output_buf[128] = {0};
     uint16_t frame_size;
     channel_id_t channel;
 
-    // Frame size is the size of the packet minus the size of non-frame elements
-    frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp));
+    // Frame size is the size of the packet minus the size of non-frame elements and tag
+    frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp) + POLY1305_TAG_SIZE);
     channel = new_frame->channel;
+
+    // Check subscription
+    if (!is_subscribed(channel, new_frame->timestamp)) {
+        STATUS_LED_RED();
+        print_error("Receiving unsubscribed channel data\n");
+        return -1;
+    }
 
     // Get the correct key for the channel
     uint8_t *decryption_key = get_channel_key(channel);
 
-    // Debug print to verify the decryption key
-    print_debug("Using AES Key for Channel:");
-    printf("%u\n", channel);
-    print_hex_debug(decryption_key, 16);
+    // Create nonce from timestamp and channel
+    uint8_t nonce[16];
+    memcpy(nonce, &new_frame->timestamp, 8);  // First 8 bytes: timestamp
+    memcpy(nonce + 8, &new_frame->channel, 8);  // Next 8 bytes: channel
 
     // Buffer for decrypted output
     uint8_t decrypted[frame_size];
 
-    // Decrypt the frame
-    int decrypt_status = decrypt_sym(new_frame->data, frame_size, decryption_key, decrypted);
-    if (decrypt_status != 0) {
-        print_error("Decryption failed\n");
+    // Get pointer to tag (it's at the end of the frame data)
+    const uint8_t *tag = new_frame->data + frame_size;
+
+    // Initialize ChaCha20-Poly1305 context
+    chacha20_poly1305_ctx ctx;
+    chacha20_poly1305_init(&ctx, decryption_key, nonce);
+
+    // Add associated data (channel and timestamp)
+    uint8_t associated_data[12];
+    memcpy(associated_data, &new_frame->channel, 4);
+    memcpy(associated_data + 4, &new_frame->timestamp, 8);
+    chacha20_poly1305_aad(&ctx, associated_data, sizeof(associated_data));
+
+    // Decrypt and verify
+    if (chacha20_poly1305_decrypt(&ctx, new_frame->data, decrypted, frame_size, tag) != 0) {
+        STATUS_LED_RED();
+        print_error("Authentication failed\n");
         return -1;
     }
-
-    // Remove padding
-    size_t new_len = frame_size;
-    if (remove_pkcs7_padding(decrypted, &new_len) != 0) {
-        print_error("Invalid padding detected after decryption\n");
-        return -1;
-    }
-
-    // Debug output for decrypted data
-    print_debug("Decrypted Frame:");
-    print_hex_debug(decrypted, new_len);
 
     // Send decrypted data back
-    write_packet(DECODE_MSG, decrypted, new_len);
+    write_packet(DECODE_MSG, decrypted, frame_size);
     return 0;
 }
-// int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
-//     char output_buf[128] = {0};
-//     uint16_t frame_size;
-//     channel_id_t channel;
-
-//     // Frame size is the size of the packet minus the size of non-frame elements
-//     frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp));
-//     channel = new_frame->channel;
-
-//     // adding decryption step
-//     uint8_t decrypted[frame_size];
-//     decrypt_sym(new_frame->data, frame_size, AES_KEY, decrypted);
-
-
-//     //add AES key decryption print...
-//     // print_debug("AES Key being used for decryption:");
-//     // print_hex_debug(AES_KEY, 16);  // Assuming print_hex_debug prints byte arrays in hex
-
-
-//     // The reference design doesn't use the timestamp, but you may want to in your design
-//     timestamp_t timestamp = new_frame->timestamp;
-
-//     // Check that we are subscribed to the channel...
-//     // print_debug("Checking subscription\n");
-//     // if (is_subscribed(channel, timestamp)) {
-//     //     print_debug("Subscription Valid\n");
-//     //     /* The reference design doesn't need any extra work to decode, but your design likely will.
-//     //     *  Do any extra decoding here before returning the result to the host. */
-//     //     write_packet(DECODE_MSG, decrypted, frame_size);
-//     //     return 0;
-//     // } else {
-//     //     STATUS_LED_RED();
-//     //     sprintf(
-//     //         output_buf,
-//     //         "Receiving unsubscribed channel data.  %u\n", channel);
-//     //     print_error(output_buf);
-//     //     return -1;
-//     // }
-
-//     // test just skipping sub hook...
-//     write_packet(DECODE_MSG, decrypted, frame_size);
-//     return 0;
-// }
 
 /** @brief Initializes peripherals for system boot.
 */
