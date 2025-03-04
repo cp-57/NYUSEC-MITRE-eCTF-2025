@@ -30,6 +30,9 @@ def gen_secrets(channels: list[int]) -> bytes:
 
     :returns: Contents of the secrets file
     """
+    # Generate a random hmac key
+    hmac_key = os.urandom(32).hex()
+
     # Generate a random AES key
     aes_key = os.urandom(16).hex()
     
@@ -42,6 +45,7 @@ def gen_secrets(channels: list[int]) -> bytes:
     
     # Create the secrets object with encryption keys
     secrets = {
+        "hmac_key": hmac_key,
         "aes_key": aes_key,
         "channel_keys": channel_keys,
     }

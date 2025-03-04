@@ -15,6 +15,7 @@ import struct
 import json
 import os
 from Crypto.Cipher import AES
+from Crypto.Hash import HMAC, SHA256
 from Crypto.Util.Padding import pad
 from Crypto.Random import get_random_bytes
 
@@ -34,6 +35,7 @@ class Encoder:
             raise ValueError("Invalid secrets file format")
 
         # Extract encryption keys from secrets
+        self.hmac_key = bytes.fromhex(secrets["hmac_key"])
         self.aes_key = bytes.fromhex(secrets["aes_key"])
         self.channel_keys = {
             int(ch): bytes.fromhex(key)
@@ -60,6 +62,11 @@ class Encoder:
         """
         if len(frame) > 64:
             raise ValueError("Frame size exceeds 64 bytes")
+        
+        # Hash timestamp 
+        hmac = HMAC.new(self.hmac_key, digestmod=SHA256)
+        hmac.update(timestamp)
+        mac = hmac.hexdigest()
 
         # Get channel-specific key (or default to channel 0 key)
         channel_key = self.channel_keys.get(channel, self.channel_keys[0])
@@ -75,7 +82,7 @@ class Encoder:
         encrypted_frame = cipher.encrypt(padded_frame)
 
         # Pack the encoded frame into the expected format
-        return struct.pack("<IQ", channel, timestamp) + iv + encrypted_frame
+        return struct.pack("<IQ", channel, timestamp) + iv + encrypted_frame + mac
 
 
 def main():
