@@ -22,20 +22,11 @@
 #include "simple_flash.h"
 #include "host_messaging.h"
 #include "secrets.h"
+#include "wolfssl/wolfcrypt/hmac.h"
+#include "simple_crypto.h"
 
 #include "simple_uart.h"
 
-/* Code between this #ifdef and the subsequent #endif will
-*  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
-*  the projectk.mk file. */
-#ifdef CRYPTO_EXAMPLE
-/* The simple crypto example included with the reference design is intended
-*  to be an example of how you *may* use cryptography in your design. You
-*  are not limited nor required to use this interface in your design. It is
-*  recommended for newer teams to start by only using the simple crypto
-*  library until they have a working design. */
-#include "simple_crypto.h"
-#endif  //CRYPTO_EXAMPLE
 
 /**********************************************************
  ******************* PRIMITIVE TYPES **********************
@@ -75,7 +66,7 @@
 typedef struct {
     channel_id_t channel;
     timestamp_t timestamp;
-    uint8_t hmac[16];         // 16-byte HMAC for authentication
+    uint8_t hmac[16];    
     uint8_t data[FRAME_SIZE];
 } frame_packet_t;
 
@@ -250,7 +241,7 @@ uint8_t* get_hmac_key(channel_id_t channel) {
     }
 }
 
-// Constant-time comparison to prevent timing attacks
+// Constant-time comparison
 int secure_compare(const uint8_t *a, const uint8_t *b, size_t length) {
     int result = 0;
     for (size_t i = 0; i < length; i++) {
@@ -270,6 +261,86 @@ int remove_pkcs7_padding(uint8_t *plaintext, size_t *len) {
 
     *len -= pad_value;
     return 0;
+}
+
+int validate_hmac(frame_packet_t *frame, uint8_t *hmac_key) {
+    Hmac hmac;  
+    uint8_t calculated_hmac[16];
+    char debug_buffer[256]; // Buffer for formatting debug messages
+
+    print_debug("===== HMAC VALIDATION DEBUGGING =====");
+    
+    sprintf(debug_buffer, "Frame channel ID: %u", frame->channel);
+    print_debug(debug_buffer);
+    
+    sprintf(debug_buffer, "Frame timestamp: %llu", frame->timestamp);
+    print_debug(debug_buffer);
+    
+    print_debug("Received HMAC in frame:");
+    print_hex_debug(frame->hmac, 16);
+    
+    print_debug("Using HMAC key for verification:");
+    print_hex_debug(hmac_key, 32);
+    
+    wc_HmacInit(&hmac, NULL, INVALID_DEVID);
+    
+    uint8_t hmac_data[sizeof(channel_id_t) + sizeof(timestamp_t) + FRAME_SIZE];
+    uint32_t offset = 0;
+    
+    // Print sizes to verify correct memory layout
+    sprintf(debug_buffer, "Size of channel_id_t: %lu bytes", sizeof(channel_id_t));
+    print_debug(debug_buffer);
+    
+    sprintf(debug_buffer, "Size of timestamp_t: %lu bytes", sizeof(timestamp_t));
+    print_debug(debug_buffer);
+    
+    sprintf(debug_buffer, "Size of FRAME_SIZE: %d bytes", FRAME_SIZE);
+    print_debug(debug_buffer);
+    
+    sprintf(debug_buffer, "Total HMAC input size: %lu bytes", sizeof(hmac_data));
+    print_debug(debug_buffer);
+    
+    memcpy(hmac_data + offset, &frame->channel, sizeof(channel_id_t));
+    sprintf(debug_buffer, "Channel bytes added at offset %u:", offset);
+    print_debug(debug_buffer);
+    print_hex_debug(hmac_data + offset, sizeof(channel_id_t));
+    offset += sizeof(channel_id_t);
+    
+    memcpy(hmac_data + offset, &frame->timestamp, sizeof(timestamp_t));
+    sprintf(debug_buffer, "Timestamp bytes added at offset %u:", offset);
+    print_debug(debug_buffer);
+    print_hex_debug(hmac_data + offset, sizeof(timestamp_t));
+    offset += sizeof(timestamp_t);
+    
+    memcpy(hmac_data + offset, frame->data, FRAME_SIZE);
+    sprintf(debug_buffer, "First 16 bytes of encrypted data at offset %u:", offset);
+    print_debug(debug_buffer);
+    print_hex_debug(frame->data, 16);
+    print_debug("Last 16 bytes of encrypted data:");
+    print_hex_debug(frame->data + FRAME_SIZE - 16, 16);
+    
+    print_debug("Checking endianness of timestamp bytes:");
+    for(int i = 0; i < sizeof(timestamp_t); i++) {
+        sprintf(debug_buffer, "Byte %d: 0x%02x", i, *(((uint8_t*)&frame->timestamp) + i));
+        print_debug(debug_buffer);
+    }
+    
+    wc_HmacSetKey(&hmac, WC_SHA256, hmac_key, 32); 
+    wc_HmacUpdate(&hmac, hmac_data, sizeof(hmac_data));
+    wc_HmacFinal(&hmac, calculated_hmac);
+
+    print_debug("Complete C HMAC Input Data:");
+    print_hex_debug(hmac_data, sizeof(hmac_data));
+
+    print_debug("Calculated HMAC (16 bytes):");
+    print_hex_debug(calculated_hmac, 16);
+    
+    
+    wc_HmacFree(&hmac);
+    
+    print_debug("===== END HMAC VALIDATION DEBUGGING =====");
+    
+    return 1; 
 }
 
 /** @brief Processes a packet containing frame data.
@@ -297,8 +368,15 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     print_debug("Received HMAC:");
     print_hex_debug(new_frame->hmac, 16);
 
-    // Verify HMAC - temporarily bypassed for testing
-    // In a production system, you would verify the HMAC here before decryption
+    if (!validate_hmac(new_frame, hmac_key)) {
+        STATUS_LED_RED();
+        // print_error("HMAC verification failed - message may be tampered with\n");
+        // Verify HMAC - temporarily bypassed for testing
+        // return -1;
+    }
+
+    // GCM – wc_AesGcmSetKey, wc_AesGcmEncrypt, wc_AesGcmDecrypt
+    // CTR - 
 
     // Check subscription
     if (is_subscribed(channel, timestamp)) {

@@ -2,6 +2,7 @@ import argparse
 import struct
 import json
 import os
+import binascii
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from Crypto.Hash import HMAC, SHA256
@@ -33,6 +34,12 @@ class Encoder:
             int(ch): bytes.fromhex(key)
             for ch, key in secrets["hmac_keys"].items()
         }
+        
+        print("===== ENCODER INITIALIZATION =====")
+        print(f"Default AES key: {self.aes_key.hex()}")
+        print(f"Channel keys: {', '.join([f'ch{k}: {v.hex()[:8]}...' for k,v in self.channel_keys.items()])}")
+        print(f"HMAC keys: {', '.join([f'ch{k}: {v.hex()[:8]}...' for k,v in self.hmac_keys.items()])}")
+        print("=================================")
 
     def encode(self, channel: int, frame: bytes, timestamp: int) -> bytes:
         """The frame encoder function
@@ -49,26 +56,79 @@ class Encoder:
 
         :returns: The encoded frame, which will be sent to the Decoder.
         """
+        print("\n===== BEGINNING ENCODE OPERATION =====")
+        print(f"Channel: {channel} (0x{channel:08x})")
+        print(f"Timestamp: {timestamp} (0x{timestamp:016x})")
+        print(f"Frame length: {len(frame)} bytes")
+        print(f"Original frame data: {frame.hex()}")
+        
         if len(frame) > 64:
             raise ValueError("Frame size exceeds 64 bytes")
 
         channel_key = self.channel_keys.get(channel, self.channel_keys[0])
         hmac_key = self.hmac_keys.get(channel, self.hmac_keys[0])
+        
+        print(f"Using channel key for ch{channel}: {channel_key.hex()}")
+        print(f"Using HMAC key for ch{channel}: {hmac_key.hex()}")
 
-        cipher = AES.new(channel_key, AES.MODE_ECB)
-
+        # Perform padding
         padded_frame = pad(frame, AES.block_size)
+        print(f"Padded frame ({len(padded_frame)} bytes): {padded_frame.hex()}")
+        print(f"Padding bytes: {padded_frame[-padded_frame[-1]:].hex()}")
+        
+        # Encryption
+        cipher = AES.new(channel_key, AES.MODE_ECB)
         encrypted_frame = cipher.encrypt(padded_frame)
+        print(f"Encrypted frame ({len(encrypted_frame)} bytes): {encrypted_frame.hex()}")
         
+        # Header packing
         header = struct.pack("<IQ", channel, timestamp)
+        print(f"Header ({len(header)} bytes): {header.hex()}")
+        print(f"  - Channel bytes (little-endian): {header[:4].hex()}")
+        print(f"  - Timestamp bytes (little-endian): {header[4:].hex()}")
         
+        # HMAC calculation
         h = HMAC.new(hmac_key, digestmod=SHA256)
-        h.update(header + encrypted_frame)
+        data_to_sign = header + encrypted_frame
+        print("\n===== HMAC CALCULATION =====")
+        print(f"HMAC key: {hmac_key.hex()}")
+        print(f"Data to sign length: {len(data_to_sign)} bytes")
+        print(f"Data to sign (hex): {data_to_sign.hex()}")
+        print(f"  - First 12 bytes (header): {data_to_sign[:12].hex()}")
+        
+        # Break down the data to help debug
+        print("\n----- HMAC Input Breakdown -----")
+        print(f"Channel (4 bytes): {data_to_sign[:4].hex()}")
+        ch_value = struct.unpack("<I", data_to_sign[:4])[0]
+        print(f"  Decoded value: {ch_value}")
+        
+        print(f"Timestamp (8 bytes): {data_to_sign[4:12].hex()}")
+        ts_value = struct.unpack("<Q", data_to_sign[4:12])[0]
+        print(f"  Decoded value: {ts_value}")
+        
+        print(f"Encrypted data (first 16 bytes): {data_to_sign[12:28].hex()}")
+        if len(data_to_sign) > 28:
+            print(f"Encrypted data (last 16 bytes): {data_to_sign[-16:].hex()}")
+            
+        h.update(data_to_sign)
         mac = h.digest()
+        print(f"Full HMAC (32 bytes): {mac.hex()}")
         
-        mac_truncated = mac[:16]
+        mac_trunc = mac[:16]
+        print(f"Truncated HMAC (16 bytes): {mac_trunc.hex()}")
+
+        # Final encoded frame
+        encoded_frame = header + mac_trunc + encrypted_frame
+        print("\n===== FINAL ENCODED FRAME =====")
+        print(f"Total length: {len(encoded_frame)} bytes")
+        print(f"Structure:")
+        print(f"  - Header: {len(header)} bytes")
+        print(f"  - HMAC: {len(mac_trunc)} bytes")
+        print(f"  - Encrypted data: {len(encrypted_frame)} bytes")
+        print(f"Final encoded frame: {encoded_frame.hex()}")
+        print("================================\n")
         
-        return header + mac_truncated + encrypted_frame
+        return encoded_frame
 
 
 def main():
@@ -88,8 +148,23 @@ def main():
     parser.add_argument("timestamp", type=int, help="64b timestamp to use")
     args = parser.parse_args()
 
-    encoder = Encoder(args.secrets_file.read())
-    print(repr(encoder.encode(args.channel, args.frame.encode(), args.timestamp)))
+    print("\n********** ENCODER TEST **********")
+    print(f"Using secrets file: {args.secrets_file.name}")
+    print(f"Channel: {args.channel}")
+    print(f"Frame: '{args.frame}'")
+    print(f"Timestamp: {args.timestamp}")
+    
+    try:
+        encoder = Encoder(args.secrets_file.read())
+        encoded = encoder.encode(args.channel, args.frame.encode(), args.timestamp)
+        print("\n********** ENCODED OUTPUT **********")
+        print(f"Encoded frame (bytes): {repr(encoded)}")
+        print(f"Encoded frame (hex): {encoded.hex()}")
+        print(f"Encoded frame length: {len(encoded)} bytes")
+    except Exception as e:
+        print(f"\nERROR: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
