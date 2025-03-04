@@ -4,6 +4,15 @@
 .vscode/
 **/gcc
 
+# Sensitive files
+*cookies.txt
+*recovery-codes.txt
+*backup_codes.txt
+usbinput.txt
+
+# Large files
+test.json
+
 !device/lib
 
 ## Begin Generic .gitignore ##
