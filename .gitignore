@@ -1,0 +1,26 @@
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Node modules
+node_modules/
+package-lock.json
+
+# macOS system files
+.DS_Store
+
+# Sensitive files
+*cookies.txt
+*recovery-codes.txt
+*backup_codes.txt
+usbinput.txt
+
+# IDE files
+.vscode/
+.idea/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class 
