@@ -300,3 +300,4 @@ int hash(void *data, size_t len, uint8_t *hash_out) {
 }
 
 #endif
+// Added ChaCha20-Poly1305 support
