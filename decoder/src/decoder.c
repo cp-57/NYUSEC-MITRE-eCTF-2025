@@ -21,6 +21,11 @@
 #include "mxc_delay.h"
 #include "simple_flash.h"
 #include "host_messaging.h"
+#include "tmr_regs.h"
+#include "tmr.h"
+#include "wolfssl/options.h" 
+#include "wolfssl/wolfcrypt/settings.h"
+#include "wolfssl/wolfcrypt/hmac.h"
 
 #include "simple_uart.h"
 
@@ -55,6 +60,8 @@
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
+#define IV_SIZE 12
+#define HMAC_SIZE 32
 
 /**********************************************************
  ********************* STATE MACROS ***********************
@@ -74,7 +81,9 @@
 typedef struct {
     channel_id_t channel;
     timestamp_t timestamp;
+    uint8_t iv[IV_SIZE];
     uint8_t data[FRAME_SIZE];
+    uint8_t mac[HMAC_SIZE];
 } frame_packet_t;
 
 typedef struct {
@@ -120,6 +129,7 @@ typedef struct {
 // This is used to track decoder subscriptions
 flash_entry_t decoder_status;
 
+mxc_tmr_cfg_t tmr;
 
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
@@ -144,6 +154,25 @@ int is_subscribed(channel_id_t channel, timestamp_t timestamp) {
     return 0;
 }
 
+/** @brief
+ * 
+ *  @param timestamp The timestamp of the new frame
+ *  @return 1 if timestamp is authentic and monotonically increasing
+ */
+int verify_timestamp(timestamp_t timestamp, uint8_t *mac) {
+    // char output_buf[128] = {0};
+    
+    // Counter from memory
+    uint32_t m_counter = MXC_TMR_GetCount(MXC_TMR0);
+
+    // Check timestamp sequence (increment only forward) 
+    if (timestamp > m_counter) { // TODO timestamp is uint64 and MXC_TMR_GetCount returns uint32. two counters? 
+        // set counter to new timestamp
+        MXC_TMR_SetCount(MXC_TMR0, timestamp);
+        return 1;
+    }
+    return 0;
+}
 
 /**********************************************************
  ********************* CORE FUNCTIONS *********************
@@ -244,6 +273,19 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
 
     // The reference design doesn't use the timestamp, but you may want to in your design
     timestamp_t timestamp = new_frame->timestamp;
+    // uint8_t *mac = new_frame->mac;
+    
+    // Verify timestamp
+    if (verify_timestamp(timestamp, mac)) {
+        print_debug("Timestamp valid\n");
+    } else {
+        STATUS_LED_RED();
+        sprintf(
+            output_buf,
+            "Timestamp out of order.  %u\n", timestamp);
+        print_error(output_buf);
+        return -1; // TODO decide quit or just ignore?
+    }
 
     // Check that we are subscribed to the channel...
     print_debug("Checking subscription\n");
@@ -304,6 +346,19 @@ void init() {
         // if uart fails to initialize, do not continue to execute
         while (1);
     }
+
+    // Initialize counter
+    MXC_TMR_Shutdown(MXC_TMR0);
+    tmr.bitMode = MXC_TMR_BIT_MODE_32;
+    tmr.clock = MXC_TMR_EXT_CLK; // TODO maybe pick something different
+    tmr.cmp_cnt = 0x40000; // TODO. what are you
+    tmr.mode = MXC_TMR_MODE_COUNTER; 
+    tmr.pol = 1;
+    tmr.pres = MXC_TMR_PRES_16;
+    MXC_TMR_Init(MXC_TMR0, &tmr, true);
+
+    MXC_TMR_Start(MXC_TMR0);
+    MXC_TMR_SetCount(MXC_TMR0, 0);
 }
 
 /* Code between this #ifdef and the subsequent #endif will
