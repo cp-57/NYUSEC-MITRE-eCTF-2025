@@ -19,10 +19,9 @@ class Encoder:
         except json.JSONDecodeError:
             raise ValueError("Invalid secrets file format")
 
-        # Extract encryption keys from secrets - ChaCha20-Poly1305 needs 32-byte keys
-        self.chacha_key = bytes.fromhex(secrets["aes_key"]).ljust(32, b'\0')  # Ensure 32 bytes
+        self.chacha_key = bytes.fromhex(secrets["chacha_key"]).ljust(32, b'\0') 
         self.channel_keys = {
-            int(ch): bytes.fromhex(key).ljust(32, b'\0')  # Ensure 32 bytes
+            int(ch): bytes.fromhex(key).ljust(32, b'\0')
             for ch, key in secrets["channel_keys"].items()
         }
 
@@ -44,24 +43,23 @@ class Encoder:
         if len(frame) > 64:
             raise ValueError("Frame size exceeds 64 bytes")
 
-        # Get channel-specific key (or default to channel 0 key)
         channel_key = self.channel_keys.get(channel, self.channel_keys[0])
+        cipher = ChaCha20_Poly1305.new(key=channel_key)
+        header = struct.pack("<IQ", channel, timestamp)
 
-        # Create a nonce using timestamp and channel
-        nonce = struct.pack("<QQ", timestamp, channel)  # 16 bytes nonce
+        cipher.update(header)
 
-        # Create a ChaCha20-Poly1305 cipher object
-        cipher = ChaCha20_Poly1305.new(key=channel_key, nonce=nonce)
-
-        # Add channel and timestamp as associated data for authentication
-        associated_data = struct.pack("<IQ", channel, timestamp)
-        cipher.update(associated_data)
-
-        # Encrypt frame and get authentication tag
         ciphertext, tag = cipher.encrypt_and_digest(frame)
 
-        # Pack the encoded frame into the expected format: channel (4) + timestamp (8) + ciphertext + tag (16)
-        return struct.pack("<IQ", channel, timestamp) + ciphertext + tag
+        print("ENCODED FRAME:", header + cipher.nonce + ciphertext + tag)
+        print("Timestamp", timestamp)
+        print("Channel", channel)
+        print("AAD", header.hex())
+        print("NONCE", cipher.nonce.hex())
+        print("TAG", tag.hex())
+        print("Ciphertext", ciphertext.hex())
+
+        return header + cipher.nonce + ciphertext + tag
 
 
 def main():

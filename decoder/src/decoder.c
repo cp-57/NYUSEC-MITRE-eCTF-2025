@@ -22,20 +22,9 @@
 #include "simple_flash.h"
 #include "host_messaging.h"
 #include "secrets.h"
-
 #include "simple_uart.h"
-
-/* Code between this #ifdef and the subsequent #endif will
-*  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
-*  the projectk.mk file. */
-#ifdef CRYPTO_EXAMPLE
-/* The simple crypto example included with the reference design is intended
-*  to be an example of how you *may* use cryptography in your design. You
-*  are not limited nor required to use this interface in your design. It is
-*  recommended for newer teams to start by only using the simple crypto
-*  library until they have a working design. */
 #include "simple_crypto.h"
-#endif  //CRYPTO_EXAMPLE
+
 
 /**********************************************************
  ******************* PRIMITIVE TYPES **********************
@@ -72,10 +61,13 @@
 #pragma pack(push, 1) // Tells the compiler not to pad the struct members
 // for more information on what struct padding does, see:
 // https://www.gnu.org/software/c-intro-and-ref/manual/html_node/Structure-Layout.html
+// Structure of the encoded frame
 typedef struct {
-    channel_id_t channel;
-    timestamp_t timestamp;
-    uint8_t data[FRAME_SIZE];
+    channel_id_t channel; 
+    uint64_t timestamp; 
+    uint8_t nonce[12];
+    uint8_t ciphertext[64]; 
+    uint8_t tag[16];
 } frame_packet_t;
 
 typedef struct {
@@ -235,7 +227,7 @@ uint8_t* get_channel_key(channel_id_t channel) {
         case 1: return (uint8_t*)CHANNEL_1_KEY;
         case 3: return (uint8_t*)CHANNEL_3_KEY;
         case 4: return (uint8_t*)CHANNEL_4_KEY;
-        default: return (uint8_t*)CHACHA_KEY;  // Renamed from AES_KEY
+        default: return (uint8_t*)CHACHA_KEY; 
     }
 }
 
@@ -247,52 +239,98 @@ uint8_t* get_channel_key(channel_id_t channel) {
  *  @return 0 if successful.  -1 if data is from unsubscribed channel.
 */
 int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
+    char output_buf[128] = {0};
     uint16_t frame_size;
     channel_id_t channel;
 
-    // Frame size is the size of the packet minus the size of non-frame elements and tag
-    frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp) + POLY1305_TAG_SIZE);
+    // Frame size is the size of the packet minus the size of non-frame elements
+    // typedef struct {
+    //     channel_id_t channel; 
+    //     uint64_t timestamp; 
+    //     uint8_t nonce[12];
+    //     uint8_t ciphertext[64]; 
+    //     uint8_t tag[16];
+    // } frame_packet_t;
+    frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp) + sizeof(new_frame->nonce)
+         + sizeof(new_frame->tag));
     channel = new_frame->channel;
 
-    // Check subscription
-    if (!is_subscribed(channel, new_frame->timestamp)) {
+    timestamp_t timestamp = new_frame->timestamp;
+
+    uint8_t aad[12]; 
+    memcpy(aad, &channel, sizeof(channel));
+    memcpy(aad + sizeof(channel), &timestamp, sizeof(timestamp));
+
+    print_debug("Checking subscription\n");
+    if (!is_subscribed(channel, timestamp)) {
         STATUS_LED_RED();
-        print_error("Receiving unsubscribed channel data\n");
+        sprintf(
+            output_buf,
+            "Receiving unsubscribed channel data or timestamp invalid.  %u\n", channel);
+        print_error(output_buf);
         return -1;
     }
 
-    // Get the correct key for the channel
     uint8_t *decryption_key = get_channel_key(channel);
 
-    // Create nonce from timestamp and channel
-    uint8_t nonce[16];
-    memcpy(nonce, &new_frame->timestamp, 8);  // First 8 bytes: timestamp
-    memcpy(nonce + 8, &new_frame->channel, 8);  // Next 8 bytes: channel
+    // Debug print to verify the decryption key
+    print_debug("Using ChaCha Key for Channel:");
+    printf("%u\n", channel);
+    print_hex_debug(decryption_key, 16);
 
     // Buffer for decrypted output
     uint8_t decrypted[frame_size];
 
-    // Get pointer to tag (it's at the end of the frame data)
-    const uint8_t *tag = new_frame->data + frame_size;
+    // int decrypt_sym(uint8_t *polyKey, uint8_t *polyIV, uint8_t *inAAD, uint32_t inADDlen, uint8_t *ciphertext, 
+    //             uint32_t cipher_len, uint8_t *authTag, uint8_t *plaintext);
+    // print_debug("Decrypt operation details:\n");
 
-    // Initialize ChaCha20-Poly1305 context
-    chacha20_poly1305_ctx ctx;
-    chacha20_poly1305_init(&ctx, decryption_key, nonce);
+    // sprintf(output_buf, "AAD (%zu bytes): ", sizeof(aad));
+    // print_debug(output_buf);
+    // print_hex_debug(aad, sizeof(aad));
+    // print_debug("\n");
 
-    // Add associated data (channel and timestamp)
-    uint8_t associated_data[12];
-    memcpy(associated_data, &new_frame->channel, 4);
-    memcpy(associated_data + 4, &new_frame->timestamp, 8);
-    chacha20_poly1305_aad(&ctx, associated_data, sizeof(associated_data));
+    // print_debug("Decryption key: ");
+    // print_hex_debug(decryption_key, 32);
+    // print_debug("\n");
 
-    // Decrypt and verify
-    if (chacha20_poly1305_decrypt(&ctx, new_frame->data, decrypted, frame_size, tag) != 0) {
-        STATUS_LED_RED();
-        print_error("Authentication failed\n");
-        return -1;
-    }
+    // print_debug("Nonce: ");
+    // print_hex_debug(new_frame->nonce, 12);
+    // print_debug("\n");
 
-    // Send decrypted data back
+    // print_debug("Ciphertext: ");
+    // print_hex_debug(new_frame->ciphertext, frame_size);
+    // print_debug("\n");
+
+    // sprintf(output_buf, "Frame size: %u bytes\n", frame_size);
+    // print_debug(output_buf);
+
+    // print_debug("Auth tag: ");
+    // print_hex_debug(new_frame->tag, 16);
+    // print_debug("\n");
+
+    int decrypt_status = decrypt_sym(decryption_key, new_frame->nonce, aad, 12, new_frame->ciphertext,
+            frame_size, new_frame->tag, decrypted);
+
+    // sprintf(output_buf, "Decryption status: %d\n", decrypt_status);
+    // print_debug(output_buf);
+
+    // if (decrypt_status == 0) {
+    //     print_debug("Decrypted data: ");
+    //     print_hex_debug(decrypted, frame_size);
+    //     print_debug("\n");
+    // }
+
+    // Decrypt the frame
+    // int decrypt_status = decrypt_sym(decryption_key, new_frame->nonce, aad, sizeof(aad), new_frame->ciphertext,
+    //     frame_size, new_frame->tag, decrypted);
+    // if (decrypt_status != 0) {
+    //     print_error("Decryption failed\n");
+    //     return -1;
+    // }
+
+
+    print_debug("Subscription Valid\n");
     write_packet(DECODE_MSG, decrypted, frame_size);
     return 0;
 }
@@ -340,44 +378,6 @@ void init() {
     }
 }
 
-/* Code between this #ifdef and the subsequent #endif will
-*  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
-*  the projectk.mk file. */
-#ifdef CRYPTO_EXAMPLE
-void crypto_example(void) {
-    // Example of how to utilize included simple_crypto.h
-
-    // This string is 16 bytes long including null terminator
-    // This is the block size of included symmetric encryption
-    char *data = "Crypto Example!";
-    uint8_t ciphertext[BLOCK_SIZE];
-    uint8_t key[KEY_SIZE];
-    uint8_t hash_out[HASH_SIZE];
-    uint8_t decrypted[BLOCK_SIZE];
-
-    char output_buf[128] = {0};
-
-    // Zero out the key
-    bzero(key, BLOCK_SIZE);
-
-    // Encrypt example data and print out
-    encrypt_sym((uint8_t*)data, BLOCK_SIZE, key, ciphertext);
-    print_debug("Encrypted data: \n");
-    print_hex_debug(ciphertext, BLOCK_SIZE);
-
-    // Hash example encryption results
-    hash(ciphertext, BLOCK_SIZE, hash_out);
-
-    // Output hash result
-    print_debug("Hash result: \n");
-    print_hex_debug(hash_out, HASH_SIZE);
-
-    // Decrypt the encrypted message and print out
-    decrypt_sym(ciphertext, BLOCK_SIZE, key, decrypted);
-    sprintf(output_buf, "Decrypted message: %s\n", decrypted);
-    print_debug(output_buf);
-}
-#endif  //CRYPTO_EXAMPLE
 
 /**********************************************************
  *********************** MAIN LOOP ************************
@@ -415,12 +415,6 @@ int main(void) {
         // Handle list command
         case LIST_MSG:
             STATUS_LED_CYAN();
-
-            #ifdef CRYPTO_EXAMPLE
-                // Run the crypto example
-                // TODO: Remove this from your design
-                crypto_example();
-            #endif // CRYPTO_EXAMPLE
 
             // Print the boot flag
             // TODO: Remove this from your design

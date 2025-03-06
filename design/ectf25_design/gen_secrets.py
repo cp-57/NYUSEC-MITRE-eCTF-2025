@@ -30,19 +30,19 @@ def gen_secrets(channels: list[int]) -> bytes:
 
     :returns: Contents of the secrets file
     """
-    # Generate a random AES key
-    aes_key = os.urandom(16).hex()
+    # Generate a random ChaCha20 key (32 bytes instead of 16)
+    chacha_key = os.urandom(32).hex()
     
-    # Generate channel-specific keys
+    # Generate channel-specific keys (32 bytes each for ChaCha20)
     channel_keys = {
-        0: os.urandom(16).hex()  # Emergency broadcast channel key
+        0: os.urandom(32).hex()  # Emergency broadcast channel key
     }
     for channel in channels:
-        channel_keys[channel] = os.urandom(16).hex()
+        channel_keys[channel] = os.urandom(32).hex()
     
     # Create the secrets object with encryption keys
     secrets = {
-        "aes_key": aes_key,
+        "chacha_key": chacha_key,  # Changed name from aes_key to chacha_key
         "channel_keys": channel_keys,
     }
 

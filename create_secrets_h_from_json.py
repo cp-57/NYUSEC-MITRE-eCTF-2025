@@ -7,7 +7,7 @@ def format_key_c_array(hex_key):
 
 # Function to generate the C header file from JSON input
 def generate_secrets_h(json_data):
-    aes_key = json_data["aes_key"]
+    aes_key = json_data["chacha_key"]
     channel_keys = json_data["channel_keys"]
 
     header_content = """#ifndef SECRETS_H
@@ -16,12 +16,12 @@ def generate_secrets_h(json_data):
 #include <stdint.h>
 
 // AES Encryption Key
-static uint8_t AES_KEY[16] = { """ + format_key_c_array(aes_key) + " };\n\n"
+static uint8_t CHACHA_KEY[32] = { """ + format_key_c_array(aes_key) + " };\n\n"
 
     # Add channel keys
     for channel, key in channel_keys.items():
         header_content += f"// Channel {channel} Key\n"
-        header_content += f"static const uint8_t CHANNEL_{channel}_KEY[16] = {{ {format_key_c_array(key)} }};\n\n"
+        header_content += f"static const uint8_t CHANNEL_{channel}_KEY[32] = {{ {format_key_c_array(key)} }};\n\n"
 
     header_content += "#endif // SECRETS_H"
 
