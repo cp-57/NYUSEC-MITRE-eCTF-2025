@@ -168,7 +168,7 @@ int list_channels() {
     return 0;
 }
 
-
+// TODO - VERIFY THAT IT IS A LEGIT SUB UPDATE
 /** @brief Updates the channel subscription for a subset of channels.
  *
  *  @param pkt_len The length of the incoming packet
@@ -219,9 +219,8 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
     return 0;
 }
 
-// Add functions to aid in decoding
+// Add functions to aid in decoding - improve this
 uint8_t* get_channel_key(channel_id_t channel) {
-    // Note: Keys are now 32 bytes for ChaCha20
     switch (channel) {
         case 0: return (uint8_t*)CHANNEL_0_KEY;
         case 1: return (uint8_t*)CHANNEL_1_KEY;
@@ -243,7 +242,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     uint16_t frame_size;
     channel_id_t channel;
 
-    // Frame size is the size of the packet minus the size of non-frame elements
+    // FRAME STRUCT
     // typedef struct {
     //     channel_id_t channel; 
     //     uint64_t timestamp; 
@@ -273,13 +272,13 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
 
     uint8_t *decryption_key = get_channel_key(channel);
 
-    // Debug print to verify the decryption key
-    print_debug("Using ChaCha Key for Channel:");
-    printf("%u\n", channel);
-    print_hex_debug(decryption_key, 16);
-
     // Buffer for decrypted output
     uint8_t decrypted[frame_size];
+
+    // FOR DEBUGGING
+    // print_debug("Using ChaCha Key for Channel:");
+    // printf("%u\n", channel);
+    // print_hex_debug(decryption_key, 32);
 
     // int decrypt_sym(uint8_t *polyKey, uint8_t *polyIV, uint8_t *inAAD, uint32_t inADDlen, uint8_t *ciphertext, 
     //             uint32_t cipher_len, uint8_t *authTag, uint8_t *plaintext);
@@ -315,24 +314,13 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     // sprintf(output_buf, "Decryption status: %d\n", decrypt_status);
     // print_debug(output_buf);
 
-    // if (decrypt_status == 0) {
-    //     print_debug("Decrypted data: ");
-    //     print_hex_debug(decrypted, frame_size);
-    //     print_debug("\n");
-    // }
-
-    // Decrypt the frame
-    // int decrypt_status = decrypt_sym(decryption_key, new_frame->nonce, aad, sizeof(aad), new_frame->ciphertext,
-    //     frame_size, new_frame->tag, decrypted);
-    // if (decrypt_status != 0) {
-    //     print_error("Decryption failed\n");
-    //     return -1;
-    // }
-
-
-    print_debug("Subscription Valid\n");
-    write_packet(DECODE_MSG, decrypted, frame_size);
-    return 0;
+    if (decrypt_status == 0) {
+        // print_debug("Decrypted data: ");
+        // print_hex_debug(decrypted, frame_size);
+        // print_debug("\n");
+        write_packet(DECODE_MSG, decrypted, frame_size);
+    }
+    return -1;
 }
 
 /** @brief Initializes peripherals for system boot.
