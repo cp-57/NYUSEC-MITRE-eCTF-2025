@@ -70,12 +70,19 @@ typedef struct {
     uint8_t tag[16];
 } frame_packet_t;
 
+
 typedef struct {
     decoder_id_t decoder_id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
     channel_id_t channel;
 } subscription_update_packet_t;
+
+typedef struct {
+    uint8_t nonce[12];
+    uint8_t ciphertext[sizeof(subscription_update_packet_t)];
+    uint8_t tag[16];
+} encrypted_subscription_update_packet_t;
 
 typedef struct {
     channel_id_t channel;
@@ -167,6 +174,16 @@ int list_channels() {
     write_packet(LIST_MSG, &resp, len);
     return 0;
 }
+// Add functions to aid in decoding - improve this
+uint8_t* get_channel_key(channel_id_t channel) {
+    switch (channel) {
+        case 0: return (uint8_t*)CHANNEL_0_KEY;
+        case 1: return (uint8_t*)CHANNEL_1_KEY;
+        case 3: return (uint8_t*)CHANNEL_3_KEY;
+        case 4: return (uint8_t*)CHANNEL_4_KEY;
+        default: return (uint8_t*)CHACHA_KEY; 
+    }
+}
 
 // TODO - VERIFY THAT IT IS A LEGIT SUB UPDATE
 /** @brief Updates the channel subscription for a subset of channels.
@@ -180,8 +197,61 @@ int list_channels() {
  *
  *  @return 0 upon success.  -1 if error.
 */
-int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update) {
+int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_t *encrypted_update) {
     int i;
+    char output_buf[128] = {0};
+
+    // get default chacha key
+    channel_id_t chacha=55;
+    uint8_t *decryption_key = get_channel_key(chacha);
+    uint16_t subscription_update_size=24;
+
+    print_debug("Using ChaCha Key:");
+    print_hex_debug(decryption_key, 32);
+
+    print_debug("Nonce: ");
+    print_hex_debug(encrypted_update->nonce, 12);
+    print_debug("\n");
+
+    print_debug("Ciphertext: ");
+    print_hex_debug(encrypted_update->ciphertext, subscription_update_size);
+    print_debug("\n");
+
+    sprintf(output_buf, "Subscription update size: %u bytes\n", subscription_update_size);
+    print_debug(output_buf);
+
+    print_debug("Auth tag: ");
+    print_hex_debug(encrypted_update->tag, 16);
+    
+    uint8_t decrypted[subscription_update_size];
+
+    // size of the ciphertext in the encrypted update
+
+    int decrypt_status = decrypt_sym(decryption_key, encrypted_update->nonce, NULL, 0, encrypted_update->ciphertext,
+            subscription_update_size, encrypted_update->tag, decrypted);
+
+    sprintf(output_buf, "Decryption status: %d\n", decrypt_status);
+    print_debug(output_buf);
+
+    if (decrypt_status != 0) {
+        STATUS_LED_RED();
+        print_error("Subscription failure...\n");
+        return -1;
+    }
+
+    // transfer decoded subscription update data into the sub update struct
+    subscription_update_packet_t *update = (subscription_update_packet_t *)decrypted;
+
+
+
+    // Print the parsed start and end timestamps
+    sprintf(output_buf, "Parsed Start Time: %llu\n", update->start_timestamp);
+    print_debug(output_buf);
+
+    sprintf(output_buf, "Parsed End Time: %llu\n", update->end_timestamp);
+    print_debug(output_buf);
+
+    
 
     if (update->channel == EMERGENCY_CHANNEL) {
         STATUS_LED_RED();
@@ -219,16 +289,6 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
     return 0;
 }
 
-// Add functions to aid in decoding - improve this
-uint8_t* get_channel_key(channel_id_t channel) {
-    switch (channel) {
-        case 0: return (uint8_t*)CHANNEL_0_KEY;
-        case 1: return (uint8_t*)CHANNEL_1_KEY;
-        case 3: return (uint8_t*)CHANNEL_3_KEY;
-        case 4: return (uint8_t*)CHANNEL_4_KEY;
-        default: return (uint8_t*)CHACHA_KEY; 
-    }
-}
 
 /** @brief Processes a packet containing frame data.
  *
@@ -418,7 +478,7 @@ int main(void) {
         // Handle subscribe command
         case SUBSCRIBE_MSG:
             STATUS_LED_YELLOW();
-            update_subscription(pkt_len, (subscription_update_packet_t *)uart_buf);
+            update_subscription(pkt_len, (encrypted_subscription_update_packet_t *)uart_buf);
             break;
 
         // Handle bad command
