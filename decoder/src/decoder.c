@@ -159,16 +159,20 @@ int is_subscribed(channel_id_t channel, timestamp_t timestamp) {
  *  @param timestamp The timestamp of the new frame
  *  @return 1 if timestamp is authentic and monotonically increasing
  */
-int verify_timestamp(timestamp_t timestamp, uint8_t *mac) {
-    // char output_buf[128] = {0};
-    
+int verify_timestamp(timestamp_t timestamp) {
     // Counter from memory
-    uint32_t m_counter = MXC_TMR_GetCount(MXC_TMR0);
+    uint64_t m_counter0 = (uint64_t) MXC_TMR_GetCount(MXC_TMR0);
+    uint64_t m_counter1 = (uint64_t) MXC_TMR_GetCount(MXC_TMR1);
+
+    uint64_t m_counter = (m_counter0 << 32) + m_counter1; 
 
     // Check timestamp sequence (increment only forward) 
-    if (timestamp > m_counter) { // TODO timestamp is uint64 and MXC_TMR_GetCount returns uint32. two counters? 
-        // set counter to new timestamp
-        MXC_TMR_SetCount(MXC_TMR0, timestamp);
+    if (timestamp > m_counter) { 
+        uint32_t timestamp0 = (uint32_t) (timestamp >> 32);
+        uint32_t timestamp1 = (uint32_t) (timestamp & 0xFFFFFFFF);
+
+        MXC_TMR_SetCount(MXC_TMR0, timestamp0);
+        MXC_TMR_SetCount(MXC_TMR1, timestamp1);
         return 1;
     }
     return 0;
@@ -273,10 +277,9 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
 
     // The reference design doesn't use the timestamp, but you may want to in your design
     timestamp_t timestamp = new_frame->timestamp;
-    // uint8_t *mac = new_frame->mac;
     
     // Verify timestamp
-    if (verify_timestamp(timestamp, mac)) {
+    if (verify_timestamp(timestamp)) {
         print_debug("Timestamp valid\n");
     } else {
         STATUS_LED_RED();
@@ -349,16 +352,19 @@ void init() {
 
     // Initialize counter
     MXC_TMR_Shutdown(MXC_TMR0);
-    tmr.bitMode = MXC_TMR_BIT_MODE_32;
-    tmr.clock = MXC_TMR_EXT_CLK; // TODO maybe pick something different
-    tmr.cmp_cnt = 0x40000; // TODO. what are you
-    tmr.mode = MXC_TMR_MODE_COUNTER; 
-    tmr.pol = 1;
-    tmr.pres = MXC_TMR_PRES_16;
-    MXC_TMR_Init(MXC_TMR0, &tmr, true);
+    MXC_TMR_Shutdown(MXC_TMR1);
 
-    MXC_TMR_Start(MXC_TMR0);
+    tmr.bitMode = MXC_TMR_BIT_MODE_32;
+    tmr.clock = MXC_TMR_APB_CLK; 
+    tmr.cmp_cnt = 0xFFFFFFFF;
+    tmr.mode = MXC_TMR_MODE_CAPTURE;
+    tmr.pol = 1;
+    tmr.pres = 0;
+
+    MXC_TMR_Init(MXC_TMR0, &tmr, true);
+    MXC_TMR_Init(MXC_TMR1, &tmr, true);
     MXC_TMR_SetCount(MXC_TMR0, 0);
+    MXC_TMR_SetCount(MXC_TMR1, 0);
 }
 
 /* Code between this #ifdef and the subsequent #endif will
