@@ -21,6 +21,8 @@
 #include "mxc_delay.h"
 #include "simple_flash.h"
 #include "host_messaging.h"
+#include "tmr_regs.h"
+#include "tmr.h"
 
 #include "simple_uart.h"
 
@@ -120,6 +122,7 @@ typedef struct {
 // This is used to track decoder subscriptions
 flash_entry_t decoder_status;
 
+mxc_tmr_cfg_t tmr;
 
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
@@ -144,6 +147,29 @@ int is_subscribed(channel_id_t channel, timestamp_t timestamp) {
     return 0;
 }
 
+/** @brief
+ * 
+ *  @param timestamp The timestamp of the new frame
+ *  @return 1 if timestamp is authentic and monotonically increasing
+ */
+int verify_timestamp(timestamp_t timestamp) {
+    // Counter from memory
+    uint64_t m_counter0 = (uint64_t) MXC_TMR_GetCount(MXC_TMR0);
+    uint64_t m_counter1 = (uint64_t) MXC_TMR_GetCount(MXC_TMR1);
+
+    uint64_t m_counter = (m_counter0 << 32) + m_counter1; 
+
+    // Check timestamp sequence (increment only forward) 
+    if (timestamp > m_counter) { 
+        uint32_t timestamp0 = (uint32_t) (timestamp >> 32);
+        uint32_t timestamp1 = (uint32_t) (timestamp & 0xFFFFFFFF);
+
+        MXC_TMR_SetCount(MXC_TMR0, timestamp0);
+        MXC_TMR_SetCount(MXC_TMR1, timestamp1);
+        return 1;
+    }
+    return 0;
+}
 
 /**********************************************************
  ********************* CORE FUNCTIONS *********************
@@ -244,6 +270,18 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
 
     // The reference design doesn't use the timestamp, but you may want to in your design
     timestamp_t timestamp = new_frame->timestamp;
+    
+    // Verify timestamp
+    if (verify_timestamp(timestamp)) {
+        print_debug("Timestamp valid\n");
+    } else {
+        STATUS_LED_RED();
+        sprintf(
+            output_buf,
+            "Timestamp out of order.  %u\n", timestamp);
+        print_error(output_buf);
+        return -1; // TODO decide quit or just ignore?
+    }
 
     // Check that we are subscribed to the channel...
     print_debug("Checking subscription\n");
@@ -304,6 +342,22 @@ void init() {
         // if uart fails to initialize, do not continue to execute
         while (1);
     }
+
+    // Initialize counter
+    MXC_TMR_Shutdown(MXC_TMR0);
+    MXC_TMR_Shutdown(MXC_TMR1);
+
+    tmr.bitMode = MXC_TMR_BIT_MODE_32;
+    tmr.clock = MXC_TMR_APB_CLK; 
+    tmr.cmp_cnt = 0xFFFFFFFF;
+    tmr.mode = MXC_TMR_MODE_CAPTURE;
+    tmr.pol = 1;
+    tmr.pres = 0;
+
+    MXC_TMR_Init(MXC_TMR0, &tmr, true);
+    MXC_TMR_Init(MXC_TMR1, &tmr, true);
+    MXC_TMR_SetCount(MXC_TMR0, 0);
+    MXC_TMR_SetCount(MXC_TMR1, 0);
 }
 
 /* Code between this #ifdef and the subsequent #endif will
