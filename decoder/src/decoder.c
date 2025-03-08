@@ -23,9 +23,6 @@
 #include "host_messaging.h"
 #include "tmr_regs.h"
 #include "tmr.h"
-#include "wolfssl/options.h" 
-#include "wolfssl/wolfcrypt/settings.h"
-#include "wolfssl/wolfcrypt/hmac.h"
 
 #include "simple_uart.h"
 
@@ -60,8 +57,6 @@
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
-#define IV_SIZE 12
-#define HMAC_SIZE 32
 
 /**********************************************************
  ********************* STATE MACROS ***********************
@@ -81,9 +76,7 @@
 typedef struct {
     channel_id_t channel;
     timestamp_t timestamp;
-    uint8_t iv[IV_SIZE];
     uint8_t data[FRAME_SIZE];
-    uint8_t mac[HMAC_SIZE];
 } frame_packet_t;
 
 typedef struct {
