@@ -259,6 +259,10 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
         return -1;
     }
 
+    // CRC32 here
+    // validate upon pulling and pushing to mem
+    // struct with CRC and sub ID
+    
     // Find the first empty slot in the subscription array
     for (i = 0; i < MAX_CHANNEL_COUNT; i++) {
         if (decoder_status.subscribed_channels[i].id == update->channel || !decoder_status.subscribed_channels[i].active) {

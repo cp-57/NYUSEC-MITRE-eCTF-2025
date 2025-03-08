@@ -28,8 +28,8 @@ static uint8_t CHACHA_KEY[32] = { """ + format_key_c_array(aes_key) + " };\n\n"
     return header_content
 
 # Read JSON from secrets/secrets.json
-input_file_path = "secrets/secrets.json"
-output_file_path = "secrets.h"
+input_file_path = "/global.secrets"
+output_file_path = "./inc/secrets.h"
 
 if not os.path.exists(input_file_path):
     print(f"Error: File '{input_file_path}' not found!")
