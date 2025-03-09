@@ -1,23 +1,9 @@
-"""
-Author: Ben Janis
-Date: 2025
-
-This source file is part of an example system for MITRE's 2025 Embedded System CTF
-(eCTF). This code is being provided only for educational purposes for the 2025 MITRE
-eCTF competition, and may not meet MITRE standards for quality. Use this code at your
-own risk!
-
-Copyright: Copyright (c) 2025 The MITRE Corporation
-"""
-
 import argparse
 import struct
 import json
 import os
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad
-from Crypto.Random import get_random_bytes
-
+from Crypto.Cipher import ChaCha20_Poly1305
+# uses ECB mode
 
 class Encoder:
     def __init__(self, secrets: bytes):
@@ -33,10 +19,9 @@ class Encoder:
         except json.JSONDecodeError:
             raise ValueError("Invalid secrets file format")
 
-        # Extract encryption keys from secrets
-        self.aes_key = bytes.fromhex(secrets["aes_key"])
+        self.chacha_key = bytes.fromhex(secrets["chacha_key"]).ljust(32, b'\0') 
         self.channel_keys = {
-            int(ch): bytes.fromhex(key)
+            int(ch): bytes.fromhex(key).ljust(32, b'\0')
             for ch, key in secrets["channel_keys"].items()
         }
 
@@ -51,31 +36,30 @@ class Encoder:
         :param channel: 16b unsigned channel number. Channel 0 is the emergency
             broadcast that must be decodable by all channels.
         :param frame: Frame to encode. Max frame size is 64 bytes.
-        :param timestamp: 64b timestamp to use for encoding. **NOTE**: This value may
-            have no relation to the current timestamp, so you should not compare it
-            against the current time. The timestamp is guaranteed to strictly
-            monotonically increase (always go up) with subsequent calls to encode.
+        :param timestamp: 64b timestamp to use for encoding.
 
         :returns: The encoded frame, which will be sent to the Decoder.
         """
         if len(frame) > 64:
             raise ValueError("Frame size exceeds 64 bytes")
 
-        # Get channel-specific key (or default to channel 0 key)
         channel_key = self.channel_keys.get(channel, self.channel_keys[0])
+        cipher = ChaCha20_Poly1305.new(key=channel_key)
+        header = struct.pack("<IQ", channel, timestamp)
 
-        # Generate a random IV (AES block size is 16 bytes)
-        iv = get_random_bytes(16)
+        cipher.update(header)
 
-        # Create a fresh AES cipher object for encryption
-        cipher = AES.new(channel_key, AES.MODE_CBC, iv)
+        ciphertext, tag = cipher.encrypt_and_digest(frame)
 
-        # Pad frame to 16-byte boundary and encrypt
-        padded_frame = pad(frame, AES.block_size)
-        encrypted_frame = cipher.encrypt(padded_frame)
+        print("ENCODED FRAME:", header + cipher.nonce + ciphertext + tag)
+        print("Timestamp", timestamp)
+        print("Channel", channel)
+        print("AAD", header.hex())
+        print("NONCE", cipher.nonce.hex())
+        print("TAG", tag.hex())
+        print("Ciphertext", ciphertext.hex())
 
-        # Pack the encoded frame into the expected format
-        return struct.pack("<IQ", channel, timestamp) + iv + encrypted_frame
+        return header + cipher.nonce + ciphertext + tag
 
 
 def main():
@@ -101,4 +85,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
