@@ -257,6 +257,8 @@ PROJ_CFLAGS += -DMXC_ASSERT_ENABLE
 PROJ_CFLAGS += -DCRYPTO_EXAMPLE=1
 PROJ_CFLAGS += -DNO_WOLFSSL_DIR
 PROJ_CFLAGS += -DWOLFSSL_AES_DIRECT
+PROJ_CFLAGS += -DHAVE_CHACHA
+PROJ_CFLAGS += -DHAVE_POLY1305
 PROJ_CFLAGS += -DSINGLE_THREADED
 # From https://www.wolfssl.com/documentation/manuals/wolfssl/chapter02.html#building-with-gcc-arm
 PROJ_CFLAGS += -DHAVE_PK_CALLBACKS                                                               
