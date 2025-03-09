@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <string.h>
 
-int decrypt_sym(uint8_t *polyKey, uint8_t *polyIV, uint8_t *inAAD, uint32_t inAADlen, uint8_t *ciphertext, 
+int decrypt_sym(const uint8_t *polyKey, uint8_t *polyIV, uint8_t *inAAD, uint32_t inAADlen, uint8_t *ciphertext, 
                 uint32_t cipher_len, uint8_t *authTag, uint8_t *plaintext) {
 
     int ret = wc_ChaCha20Poly1305_Decrypt(polyKey, polyIV, inAAD, inAADlen,
