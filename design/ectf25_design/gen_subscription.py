@@ -14,6 +14,7 @@ import argparse
 import json
 from pathlib import Path
 import struct
+from Crypto.Cipher import ChaCha20_Poly1305
 
 from loguru import logger
 
@@ -31,19 +32,22 @@ def gen_subscription(
     :param end: Last timestamp the subscription is valid for
     :param channel: Channel to enable
     """
-    # TODO: Update this function to provide a Decoder with whatever data it needs to
-    #   subscribe to a new channel
-
-    # Load the json of the secrets file
     secrets = json.loads(secrets)
+    chacha_key = bytes.fromhex(secrets["chacha_key"])
+    cipher = ChaCha20_Poly1305.new(key=chacha_key)
 
-    # You can use secrets generated using `gen_secrets` here like:
-    # secrets["some_secrets"]
-    # Which would return "EXAMPLE" in the reference design.
-    # Please note that the secrets are READ ONLY at this sage!
+    subscription_update_package = struct.pack("<IQQI", device_id, start, end, channel)
 
-    # Pack the subscription. This will be sent to the decoder with ectf25.tv.subscribe
-    return struct.pack("<IQQI", device_id, start, end, channel)
+    ciphertext, tag = cipher.encrypt_and_digest(subscription_update_package)
+    
+    print("ENCODED FRAME:", cipher.nonce + ciphertext + tag)
+    print("Channel", channel)
+    print("Device ID", device_id)
+    print("NONCE", cipher.nonce.hex())
+    print("Start", start)
+    print("End", end)
+
+    return cipher.nonce + ciphertext + tag
 
 
 def parse_args():
@@ -80,25 +84,16 @@ def main():
 
     You will likely not have to change this function
     """
-    # Parse the command line arguments
     args = parse_args()
 
     subscription = gen_subscription(
         args.secrets_file.read(), args.device_id, args.start, args.end, args.channel
     )
-
-    # Print the generated subscription for your own debugging
-    # Attackers will NOT have access to the output of this (although they may have
-    # subscriptions in certain scenarios), but feel free to remove
-    #
-    # NOTE: Printing sensitive data is generally not good security practice
     logger.debug(f"Generated subscription: {subscription}")
 
-    # Open the file, erroring if the file exists unless the --force arg is provided
     with open(args.subscription_file, "wb" if args.force else "xb") as f:
         f.write(subscription)
 
-    # For your own debugging. Feel free to remove
     logger.success(f"Wrote subscription to {str(args.subscription_file.absolute())}")
 
 

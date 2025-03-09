@@ -80,6 +80,12 @@ typedef struct {
 } subscription_update_packet_t;
 
 typedef struct {
+    uint8_t nonce[12];
+    uint8_t ciphertext[sizeof(subscription_update_packet_t)];
+    uint8_t tag[16];
+} encrypted_subscription_update_packet_t;
+
+typedef struct {
     channel_id_t channel;
     timestamp_t start;
     timestamp_t end;
@@ -224,8 +230,70 @@ int list_channels() {
  *
  *  @return 0 upon success.  -1 if error.
 */
-int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update) {
+/** @brief Updates the channel subscription for a subset of channels.
+ *
+ *  @param pkt_len The length of the incoming packet
+ *  @param update A pointer to an array of channel_update structs,
+ *      which contains the channel number, start, and end timestamps
+ *      for each channel being updated.
+ *
+ *  @note Take care to note that this system is little endian.
+ *
+ *  @return 0 upon success.  -1 if error.
+*/
+int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_t *encrypted_update) {
     int i;
+    char output_buf[128] = {0};
+
+    const uint8_t *decryption_key = CHACHA_KEY;
+    uint16_t subscription_update_size=24;
+
+    print_debug("Using ChaCha Key:");
+    print_hex_debug(decryption_key, 32);
+
+    print_debug("Nonce: ");
+    print_hex_debug(encrypted_update->nonce, 12);
+    print_debug("\n");
+
+    print_debug("Ciphertext: ");
+    print_hex_debug(encrypted_update->ciphertext, subscription_update_size);
+    print_debug("\n");
+
+    sprintf(output_buf, "Subscription update size: %u bytes\n", subscription_update_size);
+    print_debug(output_buf);
+
+    print_debug("Auth tag: ");
+    print_hex_debug(encrypted_update->tag, 16);
+    
+    uint8_t decrypted[subscription_update_size];
+
+    // size of the ciphertext in the encrypted update
+
+    int decrypt_status = decrypt_sym(decryption_key, encrypted_update->nonce, NULL, 0, encrypted_update->ciphertext,
+            subscription_update_size, encrypted_update->tag, decrypted);
+
+    sprintf(output_buf, "Decryption status: %d\n", decrypt_status);
+    print_debug(output_buf);
+
+    if (decrypt_status != 0) {
+        STATUS_LED_RED();
+        print_error("Subscription failure...\n");
+        return -1;
+    }
+
+    // transfer decoded subscription update data into the sub update struct
+    subscription_update_packet_t *update = (subscription_update_packet_t *)decrypted;
+
+
+
+    // Print the parsed start and end timestamps
+    sprintf(output_buf, "Parsed Start Time: %llu\n", update->start_timestamp);
+    print_debug(output_buf);
+
+    sprintf(output_buf, "Parsed End Time: %llu\n", update->end_timestamp);
+    print_debug(output_buf);
+
+    
 
     if (update->channel == EMERGENCY_CHANNEL) {
         STATUS_LED_RED();
@@ -233,6 +301,10 @@ int update_subscription(pkt_len_t pkt_len, subscription_update_packet_t *update)
         return -1;
     }
 
+    // CRC32 here
+    // validate upon pulling and pushing to mem
+    // struct with CRC and sub ID
+    
     // Find the first empty slot in the subscription array
     for (i = 0; i < MAX_CHANNEL_COUNT; i++) {
         if (decoder_status.subscribed_channels[i].id == update->channel || !decoder_status.subscribed_channels[i].active) {
@@ -307,7 +379,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
         return -1;
     }
 
-    uint8_t *decryption_key = get_channel_key(channel);
+    const uint8_t *decryption_key = get_channel_key(channel);
 
     // Buffer for decrypted output
     uint8_t decrypted[frame_size];
@@ -316,8 +388,6 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     printf("%u\n", channel);
     print_hex_debug(decryption_key, 32);
 
-    int decrypt_sym(uint8_t *polyKey, uint8_t *polyIV, uint8_t *inAAD, uint32_t inADDlen, uint8_t *ciphertext, 
-                uint32_t cipher_len, uint8_t *authTag, uint8_t *plaintext);
     print_debug("Decrypt operation details:\n");
 
     sprintf(output_buf, "AAD (%zu bytes): ", sizeof(aad));
@@ -469,7 +539,7 @@ int main(void) {
         // Handle subscribe command
         case SUBSCRIBE_MSG:
             STATUS_LED_YELLOW();
-            update_subscription(pkt_len, (subscription_update_packet_t *)uart_buf);
+            update_subscription(pkt_len, (encrypted_subscription_update_packet_t *)uart_buf);
             break;
 
         // Handle bad command
