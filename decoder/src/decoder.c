@@ -148,6 +148,24 @@ int is_subscribed(channel_id_t channel, timestamp_t timestamp) {
     return 0;
 }
 
+/** @brief Retrieves the encryption key for a given channel.
+ *
+ *  This function searches the `CHANNEL_KEYS` array to find the 
+ *  corresponding encryption key for the specified channel.
+ *
+ *  @param channel The channel ID for which the key is being requested.
+ *  @return A pointer to the encryption key if found, otherwise NULL.
+ */
+
+uint8_t* get_channel_key(channel_id_t channel) {
+    for (int i = 0; i < MAX_CHANNEL_COUNT; i++) {
+        if (CHANNEL_KEYS[i].channel == channel) {
+            return (uint8_t*)CHANNEL_KEYS[i].key;
+        }
+    }
+    return NULL; 
+}
+
 /** @brief
  * 
  *  @param timestamp The timestamp of the new frame
