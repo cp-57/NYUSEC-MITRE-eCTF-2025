@@ -30,25 +30,19 @@ def gen_secrets(channels: list[int]) -> bytes:
 
     :returns: Contents of the secrets file
     """
-    # Generate a random AES key
-    aes_key = os.urandom(16).hex()
+    chacha_key = os.urandom(32).hex()
     
-    # Generate channel-specific keys
     channel_keys = {
-        0: os.urandom(16).hex()  # Emergency broadcast channel key
+        0: os.urandom(32).hex()  # Emergency broadcast channel key
     }
     for channel in channels:
-        channel_keys[channel] = os.urandom(16).hex()
+        channel_keys[channel] = os.urandom(32).hex()
     
-    # Create the secrets object with encryption keys
     secrets = {
-        "aes_key": aes_key,
+        "chacha_key": chacha_key,
         "channel_keys": channel_keys,
     }
 
-    # NOTE: if you choose to use JSON for your file type, you will not be able to
-    # store binary data, and must either use a different file type or encode the
-    # binary data to hex, base64, or another type of ASCII-only encoding
     return json.dumps(secrets).encode()
 
 
@@ -80,27 +74,15 @@ def parse_args():
 
 
 def main():
-    """Main function of gen_secrets
-
-    You will likely not have to change this function
-    """
-    # Parse the command line arguments
     args = parse_args()
 
     secrets = gen_secrets(args.channels)
 
-    # Print the generated secrets for your own debugging
-    # Attackers will NOT have access to the output of this, but feel free to remove
-    #
-    # NOTE: Printing sensitive data is generally not good security practice
     logger.debug(f"Generated secrets: {secrets}")
 
-    # Open the file, erroring if the file exists unless the --force arg is provided
     with open(args.secrets_file, "wb" if args.force else "xb") as f:
-        # Dump the secrets to the file
         f.write(secrets)
 
-    # For your own debugging. Feel free to remove
     logger.success(f"Wrote secrets to {str(args.secrets_file.absolute())}")
 
 

@@ -51,7 +51,8 @@
  *********************** CONSTANTS ************************
  **********************************************************/
 
-#define MAX_CHANNEL_COUNT 8
+// This is now defined in secrets.h
+// #define MAX_CHANNEL_COUNT 8
 #define EMERGENCY_CHANNEL 0
 #define FRAME_SIZE 64
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
