@@ -259,7 +259,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
     print_hex_debug(encrypted_update->ciphertext, subscription_update_size);
     print_debug("\n");
 
-    sprintf(output_buf, "Subscription update size: %u bytes\n", subscription_update_size);
+    snprintf(output_buf, sizeof(output_buf), "Subscription update size: %u bytes\n", subscription_update_size);
     print_debug(output_buf);
 
     print_debug("Auth tag: ");
@@ -272,7 +272,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
     int decrypt_status = decrypt_sym(decryption_key, encrypted_update->nonce, NULL, 0, encrypted_update->ciphertext,
             subscription_update_size, encrypted_update->tag, decrypted);
 
-    sprintf(output_buf, "Decryption status: %d\n", decrypt_status);
+    snprintf(output_buf, sizeof(output_buf), "Decryption status: %d\n", decrypt_status);
     print_debug(output_buf);
 
     if (decrypt_status != 0) {
@@ -287,10 +287,10 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
 
 
     // Print the parsed start and end timestamps
-    sprintf(output_buf, "Parsed Start Time: %llu\n", update->start_timestamp);
+    snprintf(output_buf, sizeof(output_buf), "Parsed Start Time: %llu\n", update->start_timestamp);
     print_debug(output_buf);
 
-    sprintf(output_buf, "Parsed End Time: %llu\n", update->end_timestamp);
+    snprintf(output_buf, sizeof(output_buf), "Parsed End Time: %llu\n", update->end_timestamp);
     print_debug(output_buf);
 
     
@@ -358,8 +358,8 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
         print_debug("Timestamp valid\n");
     } else {
         STATUS_LED_RED();
-        sprintf(
-            output_buf,
+        snprintf(
+            output_buf, sizeof(output_buf),
             "Timestamp out of order.  %u\n", timestamp);
         print_error(output_buf);
         return -1; 
@@ -372,8 +372,8 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     print_debug("Checking subscription\n");
     if (!is_subscribed(channel, timestamp)) {
         STATUS_LED_RED();
-        sprintf(
-            output_buf,
+        snprintf(
+            output_buf, sizeof(output_buf),
             "Receiving unsubscribed channel data or timestamp invalid.  %u\n", channel);
         print_error(output_buf);
         return -1;
@@ -390,7 +390,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
 
     print_debug("Decrypt operation details:\n");
 
-    sprintf(output_buf, "AAD (%zu bytes): ", sizeof(aad));
+    snprintf(output_buf, sizeof(output_buf), "AAD (%zu bytes): ", sizeof(aad));
     print_debug(output_buf);
     print_hex_debug(aad, sizeof(aad));
     print_debug("\n");
@@ -407,7 +407,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     print_hex_debug(new_frame->ciphertext, frame_size);
     print_debug("\n");
 
-    sprintf(output_buf, "Frame size: %u bytes\n", frame_size);
+    snprintf(output_buf, sizeof(output_buf), "Frame size: %u bytes\n", frame_size);
     print_debug(output_buf);
 
     print_debug("Auth tag: ");
@@ -417,7 +417,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     int decrypt_status = decrypt_sym(decryption_key, new_frame->nonce, aad, 12, new_frame->ciphertext,
             frame_size, new_frame->tag, decrypted);
 
-    // sprintf(output_buf, "Decryption status: %d\n", decrypt_status);
+    // snprintf(output_buf, sizeof(output_buf), "Decryption status: %d\n", decrypt_status);
     // print_debug(output_buf);
 
     if (decrypt_status == 0) {
@@ -545,7 +545,7 @@ int main(void) {
         // Handle bad command
         default:
             STATUS_LED_ERROR();
-            sprintf(output_buf, "Invalid Command: %c\n", cmd);
+            snprintf(output_buf, sizeof(output_buf), "Invalid Command: %c\n", cmd);
             print_error(output_buf);
             break;
         }
