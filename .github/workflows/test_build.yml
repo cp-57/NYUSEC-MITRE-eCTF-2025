@@ -1,0 +1,64 @@
+name: Build Testing
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Create and activate virtual environment
+        run: |
+          python -m venv .venv --prompt ectf-venv
+          echo "VIRTUAL_ENV=$GITHUB_WORKSPACE/.venv" >> $GITHUB_ENV
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./tools/
+          python -m pip install -e ./design/
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build decoder Docker image
+        run: |
+          cd decoder
+          docker build -t decoder .
+          cd ..
+
+      - name: Create output directory
+        run: mkdir -p deadbeef_build
+
+      - name: Run build-decoder container
+        run: |
+          docker run -v ${{ github.workspace }}/decoder:/decoder \
+                     -v ${{ github.workspace }}/deployment:/deployment \
+                     -v ${{ github.workspace }}/global.secrets:/global.secrets:ro \
+                     -v ${{ github.workspace }}/deadbeef_build:/out \
+                     -e DECODER_ID=0xdeadbeef \
+                     build-decoder
+
+      - name: Check build results
+        run: |
+          if [ -d "deadbeef_build" ] && [ "$(ls -A deadbeef_build)" ]; then
+            echo "Build successful - output files were generated"
+            exit 0
+          else
+            echo "Build failed - no output files were generated"
+            exit 1
+          fi
