@@ -178,7 +178,8 @@ int verify_timestamp(timestamp_t timestamp) {
     uint64_t m_counter = (m_counter0 << 32) + m_counter1; 
 
     // Check timestamp sequence (increment only forward) 
-    if (timestamp > m_counter) { 
+    if (timestamp > m_counter) {
+        
         uint32_t timestamp0 = (uint32_t) (timestamp >> 32);
         uint32_t timestamp1 = (uint32_t) (timestamp & 0xFFFFFFFF);
 
@@ -351,6 +352,13 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp) + sizeof(new_frame->nonce)
          + sizeof(new_frame->tag));
     channel = new_frame->channel;
+
+    // Add bounds checking
+    if (frame_size > FRAME_SIZE || frame_size <= 0) {
+        STATUS_LED_RED();
+        print_error("Invalid frame size detected\n");
+        return -1;
+    }
 
     timestamp_t timestamp = new_frame->timestamp;
 
