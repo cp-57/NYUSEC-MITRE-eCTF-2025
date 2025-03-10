@@ -39,7 +39,7 @@ jobs:
       - name: Build decoder Docker image
         run: |
           cd decoder
-          docker build -t decoder .
+          docker build -t build-decoder .
           cd ..
 
       - name: Create output directory
