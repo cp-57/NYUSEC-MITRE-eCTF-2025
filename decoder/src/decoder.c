@@ -56,6 +56,8 @@
 // Calculate the flash address where we will store channel info as the 2nd to last page available
 #define FLASH_STATUS_ADDR ((MXC_FLASH_MEM_BASE + MXC_FLASH_MEM_SIZE) - (2 * MXC_FLASH_PAGE_SIZE))
 
+#define OUTPUT_BUF_SIZE 128
+#define UART_BUF_SIZE 100
 
 /**********************************************************
  *********** COMMUNICATION PACKET DEFINITIONS *************
@@ -243,7 +245,7 @@ int list_channels() {
 */
 int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_t *encrypted_update) {
     int i;
-    char output_buf[128] = {0};
+    char output_buf[OUTPUT_BUF_SIZE] = {0};
 
     const uint8_t *decryption_key = CHACHA_KEY;
     uint16_t subscription_update_size=24;
@@ -343,7 +345,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
  *  @return 0 if successful.  -1 if data is from unsubscribed channel.
 */
 int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
-    char output_buf[128] = {0};
+    char output_buf[OUTPUT_BUF_SIZE] = {0};
     uint16_t frame_size;
     channel_id_t channel;
 
@@ -496,8 +498,8 @@ void init() {
  **********************************************************/
 
 int main(void) {
-    char output_buf[128] = {0};
-    uint8_t uart_buf[100];
+    char output_buf[OUTPUT_BUF_SIZE] = {0};
+    uint8_t uart_buf[UART_BUF_SIZE];
     msg_type_t cmd;
     int result;
     uint16_t pkt_len;
