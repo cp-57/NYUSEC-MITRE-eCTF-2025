@@ -22,6 +22,7 @@
 #include "simple_flash.h"
 #include "host_messaging.h"
 #include "tmr_regs.h"
+#include "check.hpp"
 #include "tmr.h"
 
 #include "simple_uart.h"
