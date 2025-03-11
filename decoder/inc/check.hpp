@@ -43,12 +43,21 @@ namespace check {
             CRC() {
                 MXC_CRC_Init();
                 MXC_CRC_SetPoly(POLY);
+
+                for (uint32_t& val : m_crc_results)
+                    val = 0u;
             }
 
+            /**
+             * @brief Computes CRC value at memory location
+             */
             void compute(uint32_t* memory) {
                 m_crc_results[(memory / CHANNEL_SIZE) % CHANNELS] = get_result(memory);
             }
-        
+            
+            /**
+             * @brief Verifies CRC value at memory location with precomputed value. Returns true of integrity holds, false otherwise
+             */
             const bool verify(uint32_t* memory) {
                 return get_result(memory) == m_crc_results[(memory / CHANNEL_SIZE) % CHANNELS];
             }
