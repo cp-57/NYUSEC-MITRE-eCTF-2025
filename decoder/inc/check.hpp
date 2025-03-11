@@ -51,7 +51,7 @@ namespace check {
             /**
              * @brief Computes CRC value at memory location
              */
-            void compute(uint32_t* memory) {
+            void remember(uint32_t* memory) {
                 m_crc_results[(memory / CHANNEL_SIZE) % CHANNELS] = get_result(memory);
             }
             
@@ -72,7 +72,7 @@ namespace check {
     Usage:
         check::CRC checker;
 
-        checker.compute(channel_address1);
+        checker.remember(channel_address1);
 
         // channel changes over time
 
