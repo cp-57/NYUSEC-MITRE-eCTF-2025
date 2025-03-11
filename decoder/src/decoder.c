@@ -435,6 +435,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
         // print_hex_debug(decrypted, frame_size);
         // print_debug("\n");
         write_packet(DECODE_MSG, decrypted, frame_size);
+        return 0;
     }
     return -1;
 }
