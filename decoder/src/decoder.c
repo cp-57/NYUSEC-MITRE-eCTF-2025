@@ -27,6 +27,7 @@
 #include "simple_uart.h"
 #include "simple_crypto.h"
 #include "secrets.h"
+#include "random_w.h"
 
 /**********************************************************
  ******************* PRIMITIVE TYPES **********************
@@ -505,6 +506,7 @@ void init() {
  **********************************************************/
 
 int main(void) {
+
     char output_buf[128] = {0};
     uint8_t uart_buf[MAX_UART_BUFFER_SIZE];
     msg_type_t cmd;
@@ -513,6 +515,7 @@ int main(void) {
 
     // initialize the device
     init();
+    TRNG_Initialize();
 
     print_debug("Decoder Booted!\n");
 
@@ -521,6 +524,7 @@ int main(void) {
         print_debug("Ready\n");
 
         STATUS_LED_GREEN();
+        rand_delay();
 
         result = read_packet(&cmd, uart_buf, &pkt_len);
 
