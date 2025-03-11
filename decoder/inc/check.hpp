@@ -1,3 +1,5 @@
+#pragma once
+
 /**
  * @author      smallfoot47
  * @file        check.cpp
