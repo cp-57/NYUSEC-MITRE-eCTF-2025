@@ -40,7 +40,7 @@ static const channel_key_t CHANNEL_KEYS[MAX_CHANNEL_COUNT] = {{
 
     return header_content
 
-input_file_path = "/global.secrets"
+input_file_path = "../../global.secrets"
 output_file_path = "/decoder/inc/secrets.h"
 
 # Check if the input file exists
