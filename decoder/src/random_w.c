@@ -38,13 +38,9 @@ void rand_delay(void)
     
     memset(random_src, 0, sizeof(random_src));
     
-    // wait = 1;
-    // NVIC_EnableIRQ(TRNG_IRQn);
-    // MXC_TRNG_RandomAsync(random_src, num_bytes, &d_Callback);
-    // while (wait);
     MXC_TRNG_Random(random_src, num_bytes);
     
     //perform wait operation with rand 32 bit int
     uint32_t rand_int = bytes_to_int(random_src);
-    ms_delay(rand_int % 1000); // Limiting to 0-999ms for reasonable delays
+    ms_delay(rand_int % 50); 
 }
