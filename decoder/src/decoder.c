@@ -50,6 +50,7 @@
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
 // This is a canary value so we can confirm whether this decoder has booted before
 #define FLASH_FIRST_BOOT 0xDEADBEEF
+#define MD5_HASH_SIZE 16
 
 /**********************************************************
  ********************* STATE MACROS ***********************
@@ -111,6 +112,7 @@ typedef struct {
     channel_id_t id;
     timestamp_t start_timestamp;
     timestamp_t end_timestamp;
+    uint8_t hash[MD5_HASH_SIZE];
 } channel_status_t;
 
 typedef struct {
@@ -131,6 +133,69 @@ mxc_tmr_cfg_t tmr;
  ******************* UTILITY FUNCTIONS ********************
  **********************************************************/
 
+int calculate_subscription_hash(channel_status_t *subscription, uint8_t *hash_out) {
+    struct {
+        bool active;
+        channel_id_t id;
+        timestamp_t start_timestamp;
+        timestamp_t end_timestamp;
+    } hash_data = {0};
+
+    hash_data.active = subscription->active;
+    hash_data.id = subscription->id;
+    hash_data.start_timestamp = subscription->start_timestamp;
+    hash_data.end_timestamp = subscription->end_timestamp;
+
+    // Debug: Print what we're using to calculate the hash
+    char output_buf[OUTPUT_BUF_SIZE] = {0};
+    snprintf(output_buf, sizeof(output_buf), 
+             "Calculating hash for - Active: %d, ID: %u, Start: %llu, End: %llu\n",
+             hash_data.active, hash_data.id, hash_data.start_timestamp, hash_data.end_timestamp);
+    print_debug(output_buf);
+    
+    // Debug: Print size of data being hashed
+    snprintf(output_buf, sizeof(output_buf), "Hashing %zu bytes of data\n", sizeof(hash_data));
+    print_debug(output_buf);
+
+    int result = hash(&hash_data, sizeof(hash_data), hash_out);
+    
+    // Debug: Print the calculated hash
+    print_debug("Calculated hash: ");
+    print_hex_debug(hash_out, MD5_HASH_SIZE);
+    print_debug("\n");
+    
+    return result;
+}
+
+int verify_subscription_hash(channel_status_t *subscription) {
+    uint8_t calculated_hash[MD5_HASH_SIZE];
+    char output_buf[OUTPUT_BUF_SIZE] = {0};
+    
+    // Print which subscription we're verifying
+    snprintf(output_buf, sizeof(output_buf), 
+             "Verifying hash for subscription - Channel: %u\n", subscription->id);
+    print_debug(output_buf);
+    
+    if (calculate_subscription_hash(subscription, calculated_hash) != 0) {
+        print_error("Hash calculation failed\n");
+        return 0; 
+    }
+    
+    print_debug("Stored hash: ");
+    print_hex_debug(subscription->hash, MD5_HASH_SIZE);
+    print_debug("\n");
+    
+    int result = (memcmp(calculated_hash, subscription->hash, MD5_HASH_SIZE) == 0);
+    
+    if (result) {
+        print_debug("Hash verification PASSED\n");
+    } else {
+        print_error("Hash verification FAILED\n");
+    }
+    
+    return result;
+}
+
 /** @brief Checks whether the decoder is subscribed to a given channel
  *
  *  @param channel The channel number to be checked.
@@ -144,6 +209,13 @@ int is_subscribed(channel_id_t channel, timestamp_t timestamp) {
     // Check if the decoder has has a subscription
     for (int i = 0; i < MAX_CHANNEL_COUNT; i++) { 
         if (decoder_status.subscribed_channels[i].id == channel && decoder_status.subscribed_channels[i].active && timestamp >= decoder_status.subscribed_channels[i].start_timestamp && timestamp <= decoder_status.subscribed_channels[i].end_timestamp) {
+            
+            // Verify sub hash
+            if (!verify_subscription_hash(&decoder_status.subscribed_channels[i])) {
+                print_error("Subscription hash verification failed\n");
+                STATUS_LED_RED();
+                return 0;
+            }
             return 1;
         }
     }
@@ -193,6 +265,7 @@ int verify_timestamp(timestamp_t timestamp) {
     return 0;
 }
 
+
 /**********************************************************
  ********************* CORE FUNCTIONS *********************
  **********************************************************/
@@ -209,6 +282,10 @@ int list_channels() {
 
     for (uint32_t i = 0; i < MAX_CHANNEL_COUNT; i++) {
         if (decoder_status.subscribed_channels[i].active) {
+            if (!verify_subscription_hash(&decoder_status.subscribed_channels[i])) {
+                print_error("Hash verification failed for channel, skipping\n");
+                continue;
+            }
             resp.channel_info[resp.n_channels].channel =  decoder_status.subscribed_channels[i].id;
             resp.channel_info[resp.n_channels].start = decoder_status.subscribed_channels[i].start_timestamp;
             resp.channel_info[resp.n_channels].end = decoder_status.subscribed_channels[i].end_timestamp;
@@ -322,6 +399,14 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
             decoder_status.subscribed_channels[i].id = update->channel;
             decoder_status.subscribed_channels[i].start_timestamp = update->start_timestamp;
             decoder_status.subscribed_channels[i].end_timestamp = update->end_timestamp;
+
+            if (calculate_subscription_hash(&decoder_status.subscribed_channels[i], 
+                                           decoder_status.subscribed_channels[i].hash) != 0) {
+                STATUS_LED_RED();
+                print_error("Failed to calculate subscription hash\n");
+                return -1;
+            }
+
             break;
         }
     }
@@ -469,6 +554,7 @@ void init() {
             subscription[i].start_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].end_timestamp = DEFAULT_CHANNEL_TIMESTAMP;
             subscription[i].active = false;
+
         }
 
         // Write the starting channel subscriptions into flash.

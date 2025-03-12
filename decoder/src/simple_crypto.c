@@ -26,4 +26,8 @@ int decrypt_sym(const uint8_t *polyKey, uint8_t *polyIV, uint8_t *inAAD, uint32_
     return ret;
 }
 
+int hash(void *data, size_t len, uint8_t *hash_out) {
+    return wc_Md5Hash((uint8_t *)data, len, hash_out);
+}
+
 #endif
