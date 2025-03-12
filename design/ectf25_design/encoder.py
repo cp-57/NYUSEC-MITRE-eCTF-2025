@@ -51,14 +51,6 @@ class Encoder:
 
         ciphertext, tag = cipher.encrypt_and_digest(frame)
 
-        print("ENCODED FRAME:", header + cipher.nonce + ciphertext + tag)
-        print("Timestamp", timestamp)
-        print("Channel", channel)
-        print("AAD", header.hex())
-        print("NONCE", cipher.nonce.hex())
-        print("TAG", tag.hex())
-        print("Ciphertext", ciphertext.hex())
-
         return header + cipher.nonce + ciphertext + tag
 
 

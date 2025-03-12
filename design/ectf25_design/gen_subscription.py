@@ -39,13 +39,6 @@ def gen_subscription(
     subscription_update_package = struct.pack("<IQQI", device_id, start, end, channel)
 
     ciphertext, tag = cipher.encrypt_and_digest(subscription_update_package)
-    
-    print("ENCODED FRAME:", cipher.nonce + ciphertext + tag)
-    print("Channel", channel)
-    print("Device ID", device_id)
-    print("NONCE", cipher.nonce.hex())
-    print("Start", start)
-    print("End", end)
 
     return cipher.nonce + ciphertext + tag
 
