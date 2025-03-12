@@ -152,6 +152,7 @@ int calculate_subscription_hash(channel_status_t *subscription, uint8_t *hash_ou
 }
 
 int verify_subscription_hash(channel_status_t *subscription) {
+    rand_delay();
     uint8_t calculated_hash[MD5_HASH_SIZE];
     
     if (calculate_subscription_hash(subscription, calculated_hash) != 0) {
@@ -374,6 +375,8 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
          + sizeof(new_frame->tag));
     channel = new_frame->channel;
 
+    rand_delay();
+
     // Frame bounds checking
     if (frame_size > FRAME_SIZE || frame_size <= 0) {
         STATUS_LED_RED();
@@ -382,6 +385,8 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     }
 
     timestamp_t timestamp = new_frame->timestamp;
+
+    rand_delay();
 
     // Verify timestamp
     if (!verify_timestamp(timestamp)) {
@@ -397,6 +402,8 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     memcpy(aad, &channel, sizeof(channel));
     memcpy(aad + sizeof(channel), &timestamp, sizeof(timestamp));
 
+    rand_delay();
+
     if (!is_subscribed(channel, timestamp)) {
         STATUS_LED_RED();
         snprintf(
@@ -411,8 +418,12 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     // Buffer for decrypted output
     uint8_t decrypted[frame_size];
 
+    rand_delay();
+
     int decrypt_status = decrypt_sym(decryption_key, new_frame->nonce, aad, 12, new_frame->ciphertext,
             frame_size, new_frame->tag, decrypted);
+
+    rand_delay();
 
     if (decrypt_status == 0) {
         write_packet(DECODE_MSG, decrypted, frame_size);
