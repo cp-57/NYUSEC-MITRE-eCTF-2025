@@ -28,6 +28,7 @@
 #include "simple_crypto.h"
 #include "secrets.h"
 #include "random_w.h"
+    #include "check.h"
 
 /**********************************************************
  ******************* PRIMITIVE TYPES **********************
@@ -134,17 +135,28 @@ mxc_tmr_cfg_t tmr;
  *  @param channel The channel number to be checked.
  *  @return 1 if the the decoder is subscribed to the channel.  0 if not.
 */
+int integrity_failure() {
+    STATUS_LED_RED();
+    print_error("Integrity failure!");
+    return -1;
+}
+
 int is_subscribed(channel_id_t channel, timestamp_t timestamp) {
     // Check if this is an emergency broadcast message
-    if (channel == EMERGENCY_CHANNEL) {
-        return 1;
-    }
-    // Check if the decoder has has a subscription
-    for (int i = 0; i < MAX_CHANNEL_COUNT; i++) { 
-        if (decoder_status.subscribed_channels[i].id == channel && decoder_status.subscribed_channels[i].active && timestamp >= decoder_status.subscribed_channels[i].start_timestamp && timestamp <= decoder_status.subscribed_channels[i].end_timestamp) {
+    
+        if (channel == EMERGENCY_CHANNEL) {
             return 1;
         }
-    }
+        // Check if the decoder has has a subscription
+        for (int i = 0; i < MAX_CHANNEL_COUNT; i++) {
+            if (CHECKER_VERIFY_CHANNEL((uint32_t*)&decoder_status.subscribed_channels[i])) {
+                if (decoder_status.subscribed_channels[i].id == channel && decoder_status.subscribed_channels[i].active && timestamp >= decoder_status.subscribed_channels[i].start_timestamp && timestamp <= decoder_status.subscribed_channels[i].end_timestamp) {
+                    return 1;
+                }
+            }
+            else
+                return integrity_failure();
+        }
     return 0;
 }
 
@@ -206,12 +218,15 @@ int list_channels() {
     resp.n_channels = 0;
 
     for (uint32_t i = 0; i < MAX_CHANNEL_COUNT; i++) {
-        if (decoder_status.subscribed_channels[i].active) {
-            resp.channel_info[resp.n_channels].channel =  decoder_status.subscribed_channels[i].id;
-            resp.channel_info[resp.n_channels].start = decoder_status.subscribed_channels[i].start_timestamp;
-            resp.channel_info[resp.n_channels].end = decoder_status.subscribed_channels[i].end_timestamp;
-            resp.n_channels++;
-        }
+        if (CHECKER_VERIFY_CHANNEL((uint32_t*)&decoder_status.subscribed_channels[i])) {
+            if (decoder_status.subscribed_channels[i].active) {
+                resp.channel_info[resp.n_channels].channel =  decoder_status.subscribed_channels[i].id;
+                resp.channel_info[resp.n_channels].start = decoder_status.subscribed_channels[i].start_timestamp;
+                resp.channel_info[resp.n_channels].end = decoder_status.subscribed_channels[i].end_timestamp;
+                resp.n_channels++;
+            }
+        } else 
+            return integrity_failure();
     }
 
     len = sizeof(resp.n_channels) + (sizeof(channel_info_t) * resp.n_channels);
@@ -222,17 +237,6 @@ int list_channels() {
 }
 
 
-/** @brief Updates the channel subscription for a subset of channels.
- *
- *  @param pkt_len The length of the incoming packet
- *  @param update A pointer to an array of channel_update structs,
- *      which contains the channel number, start, and end timestamps
- *      for each channel being updated.
- *
- *  @note Take care to note that this system is little endian.
- *
- *  @return 0 upon success.  -1 if error.
-*/
 /** @brief Updates the channel subscription for a subset of channels.
  *
  *  @param pkt_len The length of the incoming packet
@@ -311,16 +315,21 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
     // Find the first empty slot in the subscription array
     for (i = 0; i < MAX_CHANNEL_COUNT; i++) {
         if (decoder_status.subscribed_channels[i].id == update->channel || !decoder_status.subscribed_channels[i].active) {
-            if (update->start_timestamp > update->end_timestamp) {
-                STATUS_LED_RED();
-                print_error("Failed to update subscription - end time is before start time. Please ensure your time is linearly increasing.\n");
-                return -1;
-            }
-            decoder_status.subscribed_channels[i].active = true;
-            decoder_status.subscribed_channels[i].id = update->channel;
-            decoder_status.subscribed_channels[i].start_timestamp = update->start_timestamp;
-            decoder_status.subscribed_channels[i].end_timestamp = update->end_timestamp;
-            break;
+            if (CHECKER_VERIFY_CHANNEL((uint32_t*)&decoder_status.subscribed_channels[i])) {
+                if (update->start_timestamp > update->end_timestamp) {
+                    STATUS_LED_RED();
+                    print_error("Failed to update subscription - end time is before start time. Please ensure your time is linearly increasing.\n");
+                    return -1;
+                }
+                decoder_status.subscribed_channels[i].active = true;
+                decoder_status.subscribed_channels[i].id = update->channel;
+                decoder_status.subscribed_channels[i].start_timestamp = update->start_timestamp;
+                decoder_status.subscribed_channels[i].end_timestamp = update->end_timestamp;
+                
+                CHECKER_REMEMBER_CHANNEL((uint32_t*)&decoder_status.subscribed_channels[i]);
+                break;
+            } else
+                return integrity_failure();
         }
     }
 
@@ -380,12 +389,15 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     memcpy(aad + sizeof(channel), &timestamp, sizeof(timestamp));
 
     print_debug("Checking subscription\n");
-    if (!is_subscribed(channel, timestamp)) {
+    int is_subbed = is_subscribed(channel, timestamp);
+    if (! is_subbed) {
         STATUS_LED_RED();
         sprintf(
             output_buf,
             "Receiving unsubscribed channel data or timestamp invalid.  %u\n", channel);
         print_error(output_buf);
+        return -1;
+    } else if (is_subbed < 0) {
         return -1;
     }
 
@@ -472,6 +484,10 @@ void init() {
         // Write the starting channel subscriptions into flash.
         memcpy(decoder_status.subscribed_channels, subscription, MAX_CHANNEL_COUNT*sizeof(channel_status_t));
 
+        for (int i = 0; i < MAX_CHANNEL_COUNT; i++){
+            CHECKER_REMEMBER_CHANNEL((uint32_t*)&decoder_status.subscribed_channels[i]);
+        }
+
         flash_simple_erase_page(FLASH_STATUS_ADDR);
         flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
     }
@@ -517,6 +533,7 @@ int main(void) {
     // initialize the device
     init();
     TRNG_Initialize();
+    CHECKER_INIT();
 
     print_debug("Decoder Booted!\n");
 
@@ -541,7 +558,8 @@ int main(void) {
         // Handle list command
         case LIST_MSG:
             STATUS_LED_CYAN();
-            list_channels();
+            if (list_channels() < 0)
+                return -1;
             break;
 
         // Handle decode command
@@ -553,7 +571,8 @@ int main(void) {
         // Handle subscribe command
         case SUBSCRIBE_MSG:
             STATUS_LED_YELLOW();
-            update_subscription(pkt_len, (encrypted_subscription_update_packet_t *)uart_buf);
+            if (update_subscription(pkt_len, (encrypted_subscription_update_packet_t *)uart_buf) < 0)
+                return -1;
             break;
 
         // Handle bad command
@@ -563,5 +582,7 @@ int main(void) {
             print_error(output_buf);
             break;
         }
-    }
+    };
+
+    CHECKER_END();
 }
