@@ -251,6 +251,13 @@ MXC_OPTIMIZE_CFLAGS ?= -O2
 # Set compiler flags
 PROJ_CFLAGS += -Wall # Enable warnings
 PROJ_CFLAGS+=-DDECODER_ID=$(DECODER_ID)
+# Security hardening flags
+PROJ_CFLAGS += -fstack-protector-all
+PROJ_CFLAGS += -Wformat -Wformat-security -Werror=format-security # Format string vulnerability protection
+PROJ_CFLAGS += -fdata-sections -ffunction-sections # Better dead code elimination
+PROJ_CFLAGS += -Wl,--gc-sections # Remove unused code sections during linking
+PROJ_CFLAGS += -fno-strict-overflow -fno-delete-null-pointer-checks # Prevent undefined behavior optimizations
+
 ifeq ($(CRYPTO_EXAMPLE), 1)
 PROJ_CFLAGS += -DMXC_ASSERT_ENABLE
 # eCTF Crypto Example - WolfSSL Flags
@@ -294,6 +301,9 @@ endif
 # Form full path to linkerfile.  Works around MSYS2 edge case from (see MSDK-903).
 LINKERFILE:=$(LINKERPATH)/$(LINKERFILE)
 endif
+
+# Add these linker flags to make data sections non-executable
+PROJ_LDFLAGS += -Wl,-z,noexecstack -Wl,-z,noexecheap
 
 # This path contains system-level intialization files for the target micro.  Add to the build.
 VPATH += $(CMSIS_ROOT)/Device/Maxim/$(TARGET_UC)/Source
