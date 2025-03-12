@@ -32,6 +32,7 @@ jobs:
           python -m pip install ./tools/
           python -m pip install -e ./design/
           pip install pycryptodome
+          python -m ectf25_design.gen_secrets global.secrets 1 2 3 4
 
       - name: Set up Docker
         uses: docker/setup-buildx-action@v2

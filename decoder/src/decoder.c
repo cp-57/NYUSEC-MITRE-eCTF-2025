@@ -27,6 +27,7 @@
 #include "simple_uart.h"
 #include "simple_crypto.h"
 #include "secrets.h"
+#include "random_w.h"
 
 /**********************************************************
  ******************* PRIMITIVE TYPES **********************
@@ -43,6 +44,7 @@
 
 // This is now defined in secrets.h
 // #define MAX_CHANNEL_COUNT 8
+#define MAX_UART_BUFFER_SIZE 104
 #define EMERGENCY_CHANNEL 0
 #define FRAME_SIZE 64
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
@@ -179,7 +181,8 @@ int verify_timestamp(timestamp_t timestamp) {
     uint64_t m_counter = (m_counter0 << 32) + m_counter1; 
 
     // Check timestamp sequence (increment only forward) 
-    if (timestamp > m_counter) { 
+    if (timestamp > m_counter) {
+        
         uint32_t timestamp0 = (uint32_t) (timestamp >> 32);
         uint32_t timestamp1 = (uint32_t) (timestamp & 0xFFFFFFFF);
 
@@ -353,6 +356,13 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
          + sizeof(new_frame->tag));
     channel = new_frame->channel;
 
+    // Add bounds checking
+    if (frame_size > FRAME_SIZE || frame_size <= 0) {
+        STATUS_LED_RED();
+        print_error("Invalid frame size detected\n");
+        return -1;
+    }
+
     timestamp_t timestamp = new_frame->timestamp;
 
     // Verify timestamp
@@ -427,6 +437,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
         // print_hex_debug(decrypted, frame_size);
         // print_debug("\n");
         write_packet(DECODE_MSG, decrypted, frame_size);
+        return 0;
     }
     return -1;
 }
@@ -498,14 +509,16 @@ void init() {
  **********************************************************/
 
 int main(void) {
-    char output_buf[OUTPUT_BUF_SIZE] = {0};
-    uint8_t uart_buf[UART_BUF_SIZE];
+    char output_buf[128] = {0};
+    uint8_t uart_buf[MAX_UART_BUFFER_SIZE];
+
     msg_type_t cmd;
     int result;
     uint16_t pkt_len;
 
     // initialize the device
     init();
+    TRNG_Initialize();
 
     print_debug("Decoder Booted!\n");
 
@@ -514,6 +527,7 @@ int main(void) {
         print_debug("Ready\n");
 
         STATUS_LED_GREEN();
+        rand_delay();
 
         result = read_packet(&cmd, uart_buf, &pkt_len);
 
