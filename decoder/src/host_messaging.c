@@ -15,6 +15,8 @@
 
 #include "host_messaging.h"
 
+#define MAX_BUF_SIZE 256
+
 
 /** @brief Read len bytes from UART, acknowledging after every 256 bytes.
  * 
@@ -28,9 +30,6 @@ int read_bytes(void *buf, uint16_t len) {
     int i;
 
     for (i = 0; i < len; i++) {
-        if (i % 256 == 0 && i != 0) { // Send an ACK after receiving 256 bytes
-            write_ack();
-        }
         result = uart_readbyte();
         if (result < 0) {  // if there was an error, return immediately
             return result;
@@ -194,6 +193,9 @@ int read_packet(msg_type_t* cmd, void *buf, uint16_t *len) {
     if (header.cmd != ACK_MSG) {
         write_ack();  // ACK the header
         if (header.len && buf != NULL) {
+            if (header.len > MAX_BUF_SIZE) {
+                return -1;
+            }
             if (read_bytes(buf, header.len) < 0) {
                 return -1;
             }

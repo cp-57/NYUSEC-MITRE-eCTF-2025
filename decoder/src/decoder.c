@@ -44,7 +44,7 @@
 
 // This is now defined in secrets.h
 // #define MAX_CHANNEL_COUNT 8
-#define MAX_UART_BUFFER_SIZE 104
+#define MAX_UART_BUFFER_SIZE 256
 #define EMERGENCY_CHANNEL 0
 #define FRAME_SIZE 64
 #define DEFAULT_CHANNEL_TIMESTAMP 0xFFFFFFFFFFFFFFFF
@@ -501,7 +501,7 @@ void init() {
  **********************************************************/
 
 int main(void) {
-    char output_buf[128] = {0};
+    char output_buf[256] = {0};
     uint8_t uart_buf[MAX_UART_BUFFER_SIZE];
 
     msg_type_t cmd;
