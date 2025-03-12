@@ -68,5 +68,7 @@ void CHECKER_END() {
         if (! CHECKER_VERIFY_CHANNEL(&channel1)) {
             // channel 1 compromised!
         }
+        ...
+        CHECKER_END(); // called when channels are no longer needed          
 */
 // *****************************************************************************
