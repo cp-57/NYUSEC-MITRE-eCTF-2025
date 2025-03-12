@@ -192,6 +192,7 @@ int is_subscribed(channel_id_t channel, timestamp_t timestamp) {
             return 1;
         }
     }
+    rand_delay();
     return 0;
 }
 
@@ -235,6 +236,7 @@ int verify_timestamp(timestamp_t timestamp) {
         MXC_TMR_SetCount(MXC_TMR1, timestamp1);
         return 1;
     }
+    rand_delay();
     return 0;
 }
 
