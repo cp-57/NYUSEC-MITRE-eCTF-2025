@@ -149,10 +149,11 @@ int is_subscribed(channel_id_t channel, timestamp_t timestamp) {
         }
         // Check if the decoder has has a subscription
         for (int i = 0; i < MAX_CHANNEL_COUNT; i++) {
-            if (CHECKER_VERIFY_CHANNEL((uint32_t*)&decoder_status.subscribed_channels[i]))
+            if (CHECKER_VERIFY_CHANNEL((uint32_t*)&decoder_status.subscribed_channels[i])) {
                 if (decoder_status.subscribed_channels[i].id == channel && decoder_status.subscribed_channels[i].active && timestamp >= decoder_status.subscribed_channels[i].start_timestamp && timestamp <= decoder_status.subscribed_channels[i].end_timestamp) {
                     return 1;
                 }
+            }
             else
                 return integrity_failure();
         }
@@ -247,17 +248,6 @@ int list_channels() {
  *
  *  @return 0 upon success.  -1 if error.
 */
-/** @brief Updates the channel subscription for a subset of channels.
- *
- *  @param pkt_len The length of the incoming packet
- *  @param update A pointer to an array of channel_update structs,
- *      which contains the channel number, start, and end timestamps
- *      for each channel being updated.
- *
- *  @note Take care to note that this system is little endian.
- *
- *  @return 0 upon success.  -1 if error.
-*/
 int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_t *encrypted_update) {
     int i;
     char output_buf[128] = {0};
@@ -340,6 +330,7 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
                 break;
             } else
                 return integrity_failure();
+        }
     }
 
     // If we do not have any room for more subscriptions
