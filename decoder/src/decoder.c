@@ -500,7 +500,7 @@ void init() {
  **********************************************************/
 
 int main(void) {
-    char output_buf[256] = {0};
+    char output_buf[MAX_UART_BUFFER_SIZE] = {0};
     uint8_t uart_buf[MAX_UART_BUFFER_SIZE];
 
     msg_type_t cmd;
