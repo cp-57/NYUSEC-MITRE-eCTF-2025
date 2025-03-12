@@ -29,7 +29,7 @@ int read_bytes(void *buf, uint16_t len) {
     int result;
     int i;
 
-    if (len<MAX_BUF_SIZE) {
+    if (len>MAX_BUF_SIZE) {
         return -1;
     }
 
