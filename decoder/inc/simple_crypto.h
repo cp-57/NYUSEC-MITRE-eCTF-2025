@@ -20,12 +20,15 @@
 
 /******************************** MACRO DEFINITIONS ********************************/
 #define KEY_SIZE 32
+#define HASH_SIZE MD5_DIGEST_SIZE
 
 /******************************** FUNCTION PROTOTYPES ********************************/
 
 // int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintext);
 int decrypt_sym(const uint8_t *polyKey, uint8_t *polyIV, uint8_t *inAAD, uint32_t inAADlen, uint8_t *ciphertext, 
                 uint32_t cipher_len, uint8_t *authTag, uint8_t *plaintext);
+
+int hash(void *data, size_t len, uint8_t *hash_out);
 
 
 #endif // CRYPTO_EXAMPLE
