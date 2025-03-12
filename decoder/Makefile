@@ -253,10 +253,10 @@ PROJ_CFLAGS += -Wall # Enable warnings
 PROJ_CFLAGS+=-DDECODER_ID=$(DECODER_ID)
 # Security hardening flags
 PROJ_CFLAGS += -fstack-protector-all
-PROJ_CFLAGS += -Wformat -Wformat-security -Werror=format-security # Format string vulnerability protection
-PROJ_CFLAGS += -fdata-sections -ffunction-sections # Better dead code elimination
-PROJ_CFLAGS += -Wl,--gc-sections # Remove unused code sections during linking
-PROJ_CFLAGS += -fno-strict-overflow -fno-delete-null-pointer-checks # Prevent undefined behavior optimizations
+PROJ_CFLAGS += -Wformat -Wformat-security -Werror=format-security 
+PROJ_CFLAGS += -fdata-sections -ffunction-sections
+PROJ_CFLAGS += -Wl,--gc-sections 
+PROJ_CFLAGS += -fno-strict-overflow -fno-delete-null-pointer-checks 
 
 ifeq ($(CRYPTO_EXAMPLE), 1)
 PROJ_CFLAGS += -DMXC_ASSERT_ENABLE
@@ -264,9 +264,14 @@ PROJ_CFLAGS += -DMXC_ASSERT_ENABLE
 PROJ_CFLAGS += -DCRYPTO_EXAMPLE=1
 PROJ_CFLAGS += -DNO_WOLFSSL_DIR
 PROJ_CFLAGS += -DWOLFSSL_AES_DIRECT
+# ChaCha Flags
 PROJ_CFLAGS += -DHAVE_CHACHA
 PROJ_CFLAGS += -DHAVE_POLY1305
 PROJ_CFLAGS += -DSINGLE_THREADED
+# WolfSSL Hardening Flags
+PROJ_CFLAGS += -DTFM_TIMING_RESISTANT
+PROJ_CFLAGS += -DECC_TIMING_RESISTANT
+PROJ_CFLAGS += -DWOLFSSL_MAX_STRENGTH
 # From https://www.wolfssl.com/documentation/manuals/wolfssl/chapter02.html#building-with-gcc-arm
 PROJ_CFLAGS += -DHAVE_PK_CALLBACKS                                                               
 PROJ_CFLAGS += -DWOLFSSL_USER_IO                                                                 
