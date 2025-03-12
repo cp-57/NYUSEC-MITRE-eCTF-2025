@@ -19,9 +19,9 @@ void TRNG_IRQHandler(void)
     MXC_TRNG_Handler();
 }
 
-void ms_delay(uint32_t ms)
+void ms_delay(uint32_t rand_delay)
 {
-    MXC_Delay(ms * 1000);
+    MXC_Delay(rand_delay);
 }
 
 uint32_t bytes_to_int(uint8_t *bytes) {
@@ -40,7 +40,7 @@ void rand_delay(void)
     
     MXC_TRNG_Random(random_src, num_bytes);
     
-    //perform wait operation with rand 32 bit int
     uint32_t rand_int = bytes_to_int(random_src);
-    ms_delay(rand_int % 50); 
+    uint32_t rand_delay_range = 500 + (rand_int%4500);
+    ms_delay(rand_delay_range); 
 }
