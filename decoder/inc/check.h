@@ -7,6 +7,7 @@
  */
 
 /***** Includes *****/
+#include <stdint.h>
 #include "mxc_device.h"
 #include "nvic_table.h"
 #include "board.h"
@@ -20,7 +21,7 @@
 
 /***** Classes *****/
 
-unsigned int CRC_RESULTS[CHANNELS];
+uint32_t CRC_RESULTS[CHANNELS];
 
 void CHECKER_INIT() {
     MXC_CRC_Init();
@@ -43,11 +44,11 @@ const uint32_t CRC_COMPUTE(uint32_t* memory) {
 }
 
 void CHECKER_REMEMBER_CHANNEL(uint32_t* channel_location) {
-    CRC_RESULTS[(memory / CHANNEL_SIZE) % CHANNELS] = CRC_COMPUTE(channel_location);
+    CRC_RESULTS[(channel_location / CHANNEL_SIZE) % CHANNELS] = CRC_COMPUTE(channel_location);
 }
 
 const bool CHECKER_VERIFY_CHANNEL(uint32_t* channel_location) {
-    return CRC_COMPUTE(memory) == CRC_RESULTS[(memory / CHANNEL_SIZE) % CHANNELS];
+    return CRC_COMPUTE(channel_location) == CRC_RESULTS[(channel_location / CHANNEL_SIZE) % CHANNELS];
 }
 
 void CHECKER_END() {
