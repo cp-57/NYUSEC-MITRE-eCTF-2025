@@ -60,7 +60,6 @@
 #define FLASH_STATUS_ADDR ((MXC_FLASH_MEM_BASE + MXC_FLASH_MEM_SIZE) - (2 * MXC_FLASH_PAGE_SIZE))
 
 #define OUTPUT_BUF_SIZE 128
-#define UART_BUF_SIZE 100
 
 /**********************************************************
  *********** COMMUNICATION PACKET DEFINITIONS *************
