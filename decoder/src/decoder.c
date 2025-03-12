@@ -146,50 +146,22 @@ int calculate_subscription_hash(channel_status_t *subscription, uint8_t *hash_ou
     hash_data.start_timestamp = subscription->start_timestamp;
     hash_data.end_timestamp = subscription->end_timestamp;
 
-    // Debug: Print what we're using to calculate the hash
-    char output_buf[OUTPUT_BUF_SIZE] = {0};
-    snprintf(output_buf, sizeof(output_buf), 
-             "Calculating hash for - Active: %d, ID: %u, Start: %llu, End: %llu\n",
-             hash_data.active, hash_data.id, hash_data.start_timestamp, hash_data.end_timestamp);
-    print_debug(output_buf);
-    
-    // Debug: Print size of data being hashed
-    snprintf(output_buf, sizeof(output_buf), "Hashing %zu bytes of data\n", sizeof(hash_data));
-    print_debug(output_buf);
-
     int result = hash(&hash_data, sizeof(hash_data), hash_out);
-    
-    // Debug: Print the calculated hash
-    print_debug("Calculated hash: ");
-    print_hex_debug(hash_out, MD5_HASH_SIZE);
-    print_debug("\n");
     
     return result;
 }
 
 int verify_subscription_hash(channel_status_t *subscription) {
     uint8_t calculated_hash[MD5_HASH_SIZE];
-    char output_buf[OUTPUT_BUF_SIZE] = {0};
-    
-    // Print which subscription we're verifying
-    snprintf(output_buf, sizeof(output_buf), 
-             "Verifying hash for subscription - Channel: %u\n", subscription->id);
-    print_debug(output_buf);
     
     if (calculate_subscription_hash(subscription, calculated_hash) != 0) {
         print_error("Hash calculation failed\n");
         return 0; 
     }
     
-    print_debug("Stored hash: ");
-    print_hex_debug(subscription->hash, MD5_HASH_SIZE);
-    print_debug("\n");
-    
     int result = (memcmp(calculated_hash, subscription->hash, MD5_HASH_SIZE) == 0);
     
-    if (result) {
-        print_debug("Hash verification PASSED\n");
-    } else {
+    if (!result) {
         print_error("Hash verification FAILED\n");
     }
     
@@ -325,37 +297,16 @@ int list_channels() {
 */
 int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_t *encrypted_update) {
     int i;
-    char output_buf[OUTPUT_BUF_SIZE] = {0};
 
     const uint8_t *decryption_key = CHACHA_KEY;
     uint16_t subscription_update_size=24;
-
-    print_debug("Using ChaCha Key:");
-    print_hex_debug(decryption_key, 32);
-
-    print_debug("Nonce: ");
-    print_hex_debug(encrypted_update->nonce, 12);
-    print_debug("\n");
-
-    print_debug("Ciphertext: ");
-    print_hex_debug(encrypted_update->ciphertext, subscription_update_size);
-    print_debug("\n");
-
-    snprintf(output_buf, sizeof(output_buf), "Subscription update size: %u bytes\n", subscription_update_size);
-    print_debug(output_buf);
-
-    print_debug("Auth tag: ");
-    print_hex_debug(encrypted_update->tag, 16);
     
     uint8_t decrypted[subscription_update_size];
 
-    // size of the ciphertext in the encrypted update
 
     int decrypt_status = decrypt_sym(decryption_key, encrypted_update->nonce, NULL, 0, encrypted_update->ciphertext,
             subscription_update_size, encrypted_update->tag, decrypted);
 
-    snprintf(output_buf, sizeof(output_buf), "Decryption status: %d\n", decrypt_status);
-    print_debug(output_buf);
 
     if (decrypt_status != 0) {
         STATUS_LED_RED();
@@ -366,28 +317,12 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
     // transfer decoded subscription update data into the sub update struct
     subscription_update_packet_t *update = (subscription_update_packet_t *)decrypted;
 
-
-
-    // Print the parsed start and end timestamps
-    snprintf(output_buf, sizeof(output_buf), "Parsed Start Time: %llu\n", update->start_timestamp);
-    print_debug(output_buf);
-
-    snprintf(output_buf, sizeof(output_buf), "Parsed End Time: %llu\n", update->end_timestamp);
-    print_debug(output_buf);
-
-    
-
     if (update->channel == EMERGENCY_CHANNEL) {
         STATUS_LED_RED();
         print_error("Failed to update subscription - cannot subscribe to emergency channel\n");
         return -1;
     }
 
-    // CRC32 here
-    // validate upon pulling and pushing to mem
-    // struct with CRC and sub ID
-    
-    // Find the first empty slot in the subscription array
     for (i = 0; i < MAX_CHANNEL_COUNT; i++) {
         if (decoder_status.subscribed_channels[i].id == update->channel || !decoder_status.subscribed_channels[i].active) {
             if (update->start_timestamp > update->end_timestamp) {
@@ -410,7 +345,6 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
             break;
         }
     }
-
     // If we do not have any room for more subscriptions
     if (i == MAX_CHANNEL_COUNT) {
         STATUS_LED_RED();
@@ -420,7 +354,6 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
 
     flash_simple_erase_page(FLASH_STATUS_ADDR);
     flash_simple_write(FLASH_STATUS_ADDR, &decoder_status, sizeof(flash_entry_t));
-    // Success message with an empty body
     write_packet(SUBSCRIBE_MSG, NULL, 0);
     return 0;
 }
@@ -441,7 +374,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
          + sizeof(new_frame->tag));
     channel = new_frame->channel;
 
-    // Add bounds checking
+    // Frame bounds checking
     if (frame_size > FRAME_SIZE || frame_size <= 0) {
         STATUS_LED_RED();
         print_error("Invalid frame size detected\n");
@@ -451,13 +384,11 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     timestamp_t timestamp = new_frame->timestamp;
 
     // Verify timestamp
-    if (verify_timestamp(timestamp)) {
-        print_debug("Timestamp valid\n");
-    } else {
+    if (!verify_timestamp(timestamp)) {
         STATUS_LED_RED();
         snprintf(
             output_buf, sizeof(output_buf),
-            "Timestamp out of order.  %u\n", timestamp);
+            "Timestamp out of order.  %llu\n", timestamp);
         print_error(output_buf);
         return -1; 
     }
@@ -466,12 +397,11 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     memcpy(aad, &channel, sizeof(channel));
     memcpy(aad + sizeof(channel), &timestamp, sizeof(timestamp));
 
-    print_debug("Checking subscription\n");
     if (!is_subscribed(channel, timestamp)) {
         STATUS_LED_RED();
         snprintf(
             output_buf, sizeof(output_buf),
-            "Receiving unsubscribed channel data or timestamp invalid.  %u\n", channel);
+            "Receiving unsubscribed channel data or timestamp invalid.  %lu\n", channel);
         print_error(output_buf);
         return -1;
     }
@@ -481,46 +411,10 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     // Buffer for decrypted output
     uint8_t decrypted[frame_size];
 
-    print_debug("Using ChaCha Key for Channel:");
-    printf("%u\n", channel);
-    print_hex_debug(decryption_key, 32);
-
-    print_debug("Decrypt operation details:\n");
-
-    snprintf(output_buf, sizeof(output_buf), "AAD (%zu bytes): ", sizeof(aad));
-    print_debug(output_buf);
-    print_hex_debug(aad, sizeof(aad));
-    print_debug("\n");
-
-    print_debug("Decryption key: ");
-    print_hex_debug(decryption_key, 32);
-    print_debug("\n");
-
-    print_debug("Nonce: ");
-    print_hex_debug(new_frame->nonce, 12);
-    print_debug("\n");
-
-    print_debug("Ciphertext: ");
-    print_hex_debug(new_frame->ciphertext, frame_size);
-    print_debug("\n");
-
-    snprintf(output_buf, sizeof(output_buf), "Frame size: %u bytes\n", frame_size);
-    print_debug(output_buf);
-
-    print_debug("Auth tag: ");
-    print_hex_debug(new_frame->tag, 16);
-    print_debug("\n");
-
     int decrypt_status = decrypt_sym(decryption_key, new_frame->nonce, aad, 12, new_frame->ciphertext,
             frame_size, new_frame->tag, decrypted);
 
-    // snprintf(output_buf, sizeof(output_buf), "Decryption status: %d\n", decrypt_status);
-    // print_debug(output_buf);
-
     if (decrypt_status == 0) {
-        // print_debug("Decrypted data: ");
-        // print_hex_debug(decrypted, frame_size);
-        // print_debug("\n");
         write_packet(DECODE_MSG, decrypted, frame_size);
         return 0;
     }
@@ -544,7 +438,6 @@ void init() {
         *  This data will be persistent across reboots of the decoder. Whenever the decoder
         *  processes a subscription update, this data will be updated.
         */
-        print_debug("First boot.  Setting flash...\n");
 
         decoder_status.first_boot = FLASH_FIRST_BOOT;
 
@@ -604,14 +497,12 @@ int main(void) {
 
     // initialize the device
     init();
-    TRNG_Initialize();
 
-    print_debug("Decoder Booted!\n");
+    // Initialize TRNG 
+    TRNG_Initialize();
 
     // process commands forever
     while (1) {
-        print_debug("Ready\n");
-
         STATUS_LED_GREEN();
         rand_delay();
 
