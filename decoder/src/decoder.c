@@ -225,18 +225,27 @@ int verify_timestamp(timestamp_t timestamp) {
 
     uint64_t m_counter = (m_counter0 << 32) + m_counter1; 
 
+    rand_delay();
     // Check timestamp sequence (increment only forward) 
     if (timestamp > m_counter) {
-        
-        uint32_t timestamp0 = (uint32_t) (timestamp >> 32);
-        uint32_t timestamp1 = (uint32_t) (timestamp & 0xFFFFFFFF);
-
-        MXC_TMR_SetCount(MXC_TMR0, timestamp0);
-        MXC_TMR_SetCount(MXC_TMR1, timestamp1);
         return 1;
     }
-    rand_delay();
     return 0;
+}
+
+/** @brief
+ * 
+ *  @param timestamp The timestamp of the new frame
+ *  @return 1 if update succeeded
+ */
+int update_counter(timestamp_t timestamp) {        
+    uint32_t timestamp0 = (uint32_t) (timestamp >> 32);
+    uint32_t timestamp1 = (uint32_t) (timestamp & 0xFFFFFFFF);
+
+    MXC_TMR_SetCount(MXC_TMR0, timestamp0);
+    MXC_TMR_SetCount(MXC_TMR1, timestamp1);
+    rand_delay();
+    return 1;
 }
 
 
@@ -428,6 +437,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
 
     if (decrypt_status == 0) {
         write_packet(DECODE_MSG, decrypted, frame_size);
+        update_counter(timestamp);
         return 0;
     }
     return -1;
