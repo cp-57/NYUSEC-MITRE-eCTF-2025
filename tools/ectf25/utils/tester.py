@@ -46,8 +46,6 @@ def rand_gen(args) -> Iterator[tuple[int, bytes, int]]:
 
         # use the time for a timestamp
         timestamp = time.time_ns() // 1000
-        print(channel, frame, timestamp)
-        print(len(frame))
         yield channel, frame, timestamp
 
 

@@ -378,23 +378,14 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
  *  @return 0 if successful.  -1 if data is from unsubscribed channel.
 */
 int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
-    char output_buf[300] = {0};
+    char output_buf[OUTPUT_BUF_SIZE] = {0};
     uint16_t frame_size;
     channel_id_t channel;
 
-    print_debug("In decode function\n");
 
     frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp) + sizeof(new_frame->nonce)
          + sizeof(new_frame->tag));
     channel = new_frame->channel;
-
-    snprintf(output_buf, sizeof(output_buf), 
-         "Frame size: %u bytes, Channel: %u", 
-         frame_size, channel);
-
-    print_debug(output_buf);
-
-    print_debug("Got past frame size check\n");
 
     rand_delay();
 
@@ -418,7 +409,6 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
         print_error(output_buf);
         return -1; 
     }
-    print_debug("Got past timestamp  check\n");
 
     uint8_t aad[12]; 
     memcpy(aad, &channel, sizeof(channel));
@@ -434,7 +424,6 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
         print_error(output_buf);
         return -1;
     }
-    print_debug("Got past subscribed\n");
 
     const uint8_t *decryption_key = get_channel_key(channel);
 
@@ -443,51 +432,9 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
 
     rand_delay();
 
-// Create buffers for hex representations
-char cipher_str[frame_size * 2 + 1];
-char nonce_str[24 + 1];  // Assuming 12-byte nonce (12*2 + 1)
-char tag_str[32 + 1];    // Assuming 16-byte tag (16*2 + 1)
-
-// Initialize as empty strings
-cipher_str[0] = '\0';
-nonce_str[0] = '\0';
-tag_str[0] = '\0';
-
-char temp[3]; // Temporary buffer for each byte
-
-// Convert nonce to hex string
-for (int i = 0; i < 12; i++) {
-    snprintf(temp, sizeof(temp), "%02x", new_frame->nonce[i]);
-    strcat(nonce_str, temp);
-}
-
-// Convert ciphertext to hex string
-for (int i = 0; i < frame_size; i++) {
-    snprintf(temp, sizeof(temp), "%02x", new_frame->ciphertext[i]);
-    strcat(cipher_str, temp);
-}
-
-// Convert tag to hex string (assuming 16-byte tag, adjust if different)
-for (int i = 0; i < 16; i++) {
-    snprintf(temp, sizeof(temp), "%02x", new_frame->tag[i]);
-    strcat(tag_str, temp);
-}
-
-// Perform decryption before trying to print its result
-
-
-// Include all three in your output buffer with the correct format specifier for channel (%lu)
-
     int decrypt_status = decrypt_sym(decryption_key, new_frame->nonce, aad, 12, new_frame->ciphertext,
             frame_size, new_frame->tag, decrypted);
 
-            snprintf(output_buf, sizeof(output_buf), 
-    "Nonce: %s, Ciphertext: %s, Tag: %s, Decrypt status: %d, Channel: %lu", 
-    nonce_str, cipher_str, tag_str, decrypt_status, channel);
-
-
-    print_debug("Got past decrypt status check\n");
-    print_debug(output_buf);
 
     rand_delay();
 
@@ -496,6 +443,7 @@ for (int i = 0; i < 16; i++) {
         update_counter(timestamp);
         return 0;
     }
+    print_error("Frame failed decryption...\n");
     return -1;
 }
 
