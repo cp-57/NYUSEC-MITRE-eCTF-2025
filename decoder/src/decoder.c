@@ -337,9 +337,8 @@ int verify_timestamp(timestamp_t timestamp) {
         print_error("Hash calculation failed\n");
         return 0;
     }
-    int result = (memcmp(prev_time_checker, prev_time_hash, MD5_HASH_SIZE) == 0);
     
-    if (!result) {
+    if (!(memcmp(prev_time_checker, prev_time_hash, MD5_HASH_SIZE) == 0)) {
         print_error("Hash verification FAILED\n");
         return 0;
     }
