@@ -200,6 +200,7 @@ typedef struct {
 flash_entry_t decoder_status;
 
 timestamp_t prev_time;
+uint8_t prev_time_hash[MD5_HASH_SIZE];
 
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
@@ -331,10 +332,40 @@ uint8_t* get_channel_key(channel_id_t channel) {
  */
 int verify_timestamp(timestamp_t timestamp) {
     // Check timestamp sequence (increment only forward) 
+    uint8_t prev_time_checker[MD5_HASH_SIZE];
+    if (!hash(&prev_time, sizeof(timestamp_t), prev_time_checker)) {
+        print_error("Hash calculation failed\n");
+        return 0;
+    }
+    int result = (memcmp(prev_time_checker, prev_time_hash, MD5_HASH_SIZE) == 0);
+    
+    if (!result) {
+        print_error("Hash verification FAILED\n");
+        return 0;
+    }
+
     if (timestamp > prev_time) {
         return 1;
     }
     return 0;
+}
+
+/**
+ * @brief Update the counter with a new validated timestamp
+ * 
+ * After verifying a timestamp is valid, this function updates internal
+ * counters to reflect the most recent time.
+ * 
+ * @param timestamp The timestamp from the incoming frame to validate
+ * @return 1 if timestamp is authentic and newer than current time, 0 otherwise
+ */
+int update_counter(timestamp_t timestamp) {
+    prev_time = timestamp;
+    if (!hash(&prev_time, sizeof(timestamp_t), prev_time_hash)) {
+        print_error("Hash calculation failed\n");
+        return 0;
+    }
+    return 1;
 }
 
 /**********************************************************
@@ -508,7 +539,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
         STATUS_LED_RED();
         snprintf(
             output_buf, sizeof(output_buf),
-            "Timestamp out of order.  %llu\n", timestamp);
+            "Timestamp out of order or problems with timestamp hash verification.  %llu\n", timestamp);
         print_error(output_buf);
         return -1; 
     }
@@ -543,7 +574,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
 
     if (decrypt_status == 0) {
         write_packet(DECODE_MSG, decrypted, frame_size);
-        prev_time = timestamp;
+        update_counter();
         return 0;
     }
     print_error("Frame failed decryption...\n");
