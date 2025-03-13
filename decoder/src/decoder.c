@@ -349,10 +349,8 @@ int verify_timestamp(timestamp_t timestamp) {
             return 1;
         }
         return 0;
-    } else {
-        first_timestamp = false;
-        return 1;
     }
+    return 1;
 }
 
 /**
@@ -370,6 +368,7 @@ int update_counter(timestamp_t timestamp) {
         return 0;
     }
     prev_time = timestamp;
+    first_timestamp = false;
     return 1;
 }
 
