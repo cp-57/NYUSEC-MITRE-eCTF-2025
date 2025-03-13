@@ -21,8 +21,6 @@
 #include "mxc_delay.h"
 #include "simple_flash.h"
 #include "host_messaging.h"
-#include "tmr_regs.h"
-#include "tmr.h"
 
 #include "simple_uart.h"
 #include "simple_crypto.h"
@@ -201,7 +199,7 @@ typedef struct {
 // This is used to track decoder subscriptions
 flash_entry_t decoder_status;
 
-mxc_tmr_cfg_t tmr;
+timestamp_t prev_time;
 
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
@@ -332,39 +330,12 @@ uint8_t* get_channel_key(channel_id_t channel) {
  * @return 1 if timestamp is authentic and newer than current time, 0 otherwise
  */
 int verify_timestamp(timestamp_t timestamp) {
-    // Counter from memory
-    uint64_t m_counter0 = (uint64_t) MXC_TMR_GetCount(MXC_TMR0);
-    uint64_t m_counter1 = (uint64_t) MXC_TMR_GetCount(MXC_TMR1);
-
-    uint64_t m_counter = (m_counter0 << 32) + m_counter1; 
-
-    rand_delay();
     // Check timestamp sequence (increment only forward) 
-    if (timestamp > m_counter) {
+    if (timestamp > prev_time) {
         return 1;
     }
     return 0;
 }
-
-/**
- * @brief Update the counter with a new validated timestamp
- * 
- * After verifying a timestamp is valid, this function updates internal
- * counters to reflect the most recent time.
- * 
- * @param timestamp The new timestamp value to update
- * @return 1 if update succeeded
- */
-int update_counter(timestamp_t timestamp) {        
-    uint32_t timestamp0 = (uint32_t) (timestamp >> 32);
-    uint32_t timestamp1 = (uint32_t) (timestamp & 0xFFFFFFFF);
-
-    MXC_TMR_SetCount(MXC_TMR0, timestamp0);
-    MXC_TMR_SetCount(MXC_TMR1, timestamp1);
-    rand_delay();
-    return 1;
-}
-
 
 /**********************************************************
  ********************* CORE FUNCTIONS *********************
@@ -572,7 +543,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
 
     if (decrypt_status == 0) {
         write_packet(DECODE_MSG, decrypted, frame_size);
-        update_counter(timestamp);
+        prev_time = timestamp;
         return 0;
     }
     print_error("Frame failed decryption...\n");
@@ -622,22 +593,6 @@ void init() {
         // if uart fails to initialize, do not continue to execute
         while (1);
     }
-
-    // Initialize counter
-    MXC_TMR_Shutdown(MXC_TMR0);
-    MXC_TMR_Shutdown(MXC_TMR1);
-
-    tmr.bitMode = MXC_TMR_BIT_MODE_32;
-    tmr.clock = MXC_TMR_APB_CLK; 
-    tmr.cmp_cnt = 0xFFFFFFFF;
-    tmr.mode = MXC_TMR_MODE_CAPTURE;
-    tmr.pol = 1;
-    tmr.pres = 0;
-
-    MXC_TMR_Init(MXC_TMR0, &tmr, true);
-    MXC_TMR_Init(MXC_TMR1, &tmr, true);
-    MXC_TMR_SetCount(MXC_TMR0, 0);
-    MXC_TMR_SetCount(MXC_TMR1, 0);
 }
 
 
