@@ -200,7 +200,7 @@ typedef struct {
 flash_entry_t decoder_status;
 
 timestamp_t prev_time;
-uint8_t prev_time_hash[MD5_HASH_SIZE];
+uint8_t prev_time_hash[MD5_HASH_SIZE]={0};
 bool first_timestamp;
 
 /**********************************************************
@@ -334,8 +334,8 @@ uint8_t* get_channel_key(channel_id_t channel) {
 int verify_timestamp(timestamp_t timestamp) {
     // Check timestamp sequence (increment only forward) 
     if (!first_timestamp) {
-        uint8_t prev_time_checker[MD5_HASH_SIZE];
-        if (!hash(&prev_time, sizeof(timestamp_t), prev_time_checker)) {
+        uint8_t prev_time_checker[MD5_HASH_SIZE]={0};
+        if (!(hash(&prev_time, sizeof(timestamp_t), prev_time_checker))==0) {
             print_error("Hash calculation failed\n");
             return 0;
         }
@@ -363,7 +363,7 @@ int verify_timestamp(timestamp_t timestamp) {
  * @return 1 if timestamp is authentic and newer than current time, 0 otherwise
  */
 int update_counter(timestamp_t timestamp) {
-    if (!hash(&timestamp, sizeof(timestamp_t), prev_time_hash)) {
+    if (!(hash(&timestamp, sizeof(timestamp_t), prev_time_hash))==0) {
         print_error("Hash calculation failed\n");
         return 0;
     }
