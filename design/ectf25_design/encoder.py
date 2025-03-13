@@ -50,8 +50,12 @@ class Encoder:
         cipher.update(header)
 
         ciphertext, tag = cipher.encrypt_and_digest(frame)
+        print("CIPHERTEXT", ciphertext)
+        print("CIPHERTEXT HEX", ciphertext.hex())
+        print("NONCE:", cipher.nonce.hex())
+        print("TAG", tag.hex())
 
-        return header + cipher.nonce + ciphertext + tag
+        return header + cipher.nonce + tag + ciphertext
 
 
 def main():

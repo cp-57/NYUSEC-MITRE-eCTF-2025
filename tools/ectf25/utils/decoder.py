@@ -270,5 +270,6 @@ class DecoderIntf:
         self._open()
         for packet in msg.packets():
             logger.debug(f"Sending packet {packet}")
+            print(packet.hex())
             self.ser.write(packet)
             self.get_ack()
