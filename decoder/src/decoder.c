@@ -197,9 +197,31 @@ typedef struct {
  **********************************************************/
 
 // This is used to track decoder subscriptions
-flash_entry_t decoder_status;
+flash_entry_t decoder_status __attribute__((section(".sram0")));
+timestamp_t prev_time __attribute__((section(".sram0")));
 
-timestamp_t prev_time;
+/**********************************************************
+ ******************* INTERRUPT FUNCTIONS ******************
+ **********************************************************/
+
+// ECC flags
+// volatile uint32_t badData;
+volatile uint32_t ecc_flag;
+volatile uint32_t ecc_err;
+volatile uint32_t ecc_d_err;
+volatile uint32_t ecc_addr;
+
+void ECC_IRQHandler(void)
+{
+    ecc_err = MXC_GCR->eccerr;
+    ecc_d_err = MXC_GCR->eccced;
+    ecc_addr = MXC_GCR->eccaddr;
+    ecc_flag = 1;
+    
+    MXC_GCR->eccerr = MXC_GCR->eccerr;
+    MXC_GCR->eccced = MXC_GCR->eccced;
+}
+
 
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
@@ -252,6 +274,12 @@ int calculate_subscription_hash(channel_status_t *subscription, uint8_t *hash_ou
  */
 int verify_subscription_hash(channel_status_t *subscription) {
     rand_delay();
+
+    if (ecc_flag) {
+        print_error("ECC Triggered!");
+        return 0;
+    }
+
     uint8_t calculated_hash[MD5_HASH_SIZE];
     
     if (calculate_subscription_hash(subscription, calculated_hash) != 0) {
@@ -593,6 +621,27 @@ void init() {
         // if uart fails to initialize, do not continue to execute
         while (1);
     }
+
+
+    // Initialize security features
+    // Zeroize RAM0 before enabling ECC, 
+    // This prevents ECC from triggering on reading uninitalized memory
+    MXC_GCR->memz |= MXC_F_GCR_MEMZ_RAM0;
+    // wait for memory to Zeroize
+    while(MXC_GCR->memz & MXC_F_GCR_MEMZ_RAM0);
+
+    // Clear all ECC Errors -- write-1-to-clear
+    MXC_GCR->eccerr = MXC_GCR->eccerr;
+    MXC_GCR->eccced = MXC_GCR->eccced;
+    
+    // Enable interrupts for ECC errors
+    MXC_GCR->eccie |=  MXC_F_GCR_ECCIE_RAM;
+    NVIC_EnableIRQ(ECC_IRQn);
+
+    // clear ECC flag
+    ecc_flag = 0;
+
+    printf("Security initialization complete.\n");
 }
 
 
@@ -619,6 +668,10 @@ int main(void) {
     int result;
     uint16_t pkt_len;
 
+    // pointers for checking ECC
+    volatile flash_entry_t* dummy_decoder = &decoder_status;
+    volatile timestamp_t* dummy_timestamp = &prev_time;
+
     // initialize the device
     init();
 
@@ -629,6 +682,16 @@ int main(void) {
     while (1) {
         STATUS_LED_GREEN();
         rand_delay();
+
+        // check for ECC errors by accessing critcal memory we want to correct
+        *dummy_decoder;
+        *dummy_timestamp;
+        if (ecc_flag) {
+           printf("ECC Error:              0x%08x\n", ecc_err);
+           printf("ECC Not Double Error:   0x%08x\n", ecc_d_err);
+           printf("ECC Error Address:      0x%08x\n", ecc_addr);
+        }
+
 
         result = read_packet(&cmd, uart_buf, &pkt_len);
 
