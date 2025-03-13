@@ -337,21 +337,6 @@ int verify_timestamp(timestamp_t timestamp) {
     return 0;
 }
 
-/**
- * @brief Update the counter with a new validated timestamp
- * 
- * After verifying a timestamp is valid, this function updates internal
- * counters to reflect the most recent time.
- * 
- * @param timestamp The new timestamp value to update
- * @return 1 if update succeeded
- */
-int update_counter(timestamp_t timestamp) {     
-    prev_time = timestamp;
-    return 1;
-}
-
-
 /**********************************************************
  ********************* CORE FUNCTIONS *********************
  **********************************************************/
@@ -558,7 +543,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
 
     if (decrypt_status == 0) {
         write_packet(DECODE_MSG, decrypted, frame_size);
-        update_counter(timestamp);
+        prev_time = timestamp;
         return 0;
     }
     print_error("Frame failed decryption...\n");
