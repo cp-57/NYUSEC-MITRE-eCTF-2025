@@ -359,7 +359,7 @@ int verify_timestamp(timestamp_t timestamp) {
  * @return 1 if timestamp is authentic and newer than current time, 0 otherwise
  */
 int update_counter(timestamp_t timestamp) {
-    if (!hash(&prev_time, sizeof(timestamp_t), prev_time_hash)) {
+    if (!hash(&timestamp, sizeof(timestamp_t), prev_time_hash)) {
         print_error("Hash calculation failed\n");
         return 0;
     }
