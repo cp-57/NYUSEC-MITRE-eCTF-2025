@@ -42,8 +42,10 @@
  *********************** CONSTANTS ************************
  **********************************************************/
 
-// This is now defined in secrets.h
-// #define MAX_CHANNEL_COUNT 8
+/* 
+ * MAX_UART_BUFFER_SIZE is the maximum size of any single incoming message
+ * that can be processed properly. Messages larger than this will return an error.
+ */
 #define MAX_UART_BUFFER_SIZE 256
 #define EMERGENCY_CHANNEL 0
 #define FRAME_SIZE 64
@@ -69,6 +71,17 @@
 // for more information on what struct padding does, see:
 // https://www.gnu.org/software/c-intro-and-ref/manual/html_node/Structure-Layout.html
 
+/**
+ * @brief Structure to store frame data with authentication and encryption fields
+ * 
+ * This packet format includes:
+ * - channel ID: identifies which channel this frame belongs to
+ * - timestamp: time value of packet
+ * - nonce: unique value for each encryption to prevent reuse
+ * - tag: authentication tag to verify message integrity
+ * - ciphertext: the encrypted payload limited to FRAME_SIZE bytes
+ */
+
 typedef struct {
     channel_id_t channel; 
     uint64_t timestamp; 
@@ -77,6 +90,16 @@ typedef struct {
     uint8_t ciphertext[64]; 
 } frame_packet_t;
 
+/**
+ * @brief Plaintext subscription update information
+ *
+ * Contains the parameters needed to update a channel subscription:
+ * - decoder_id: Identifies which decoder this subscription is for
+ * - start_timestamp: Beginning of subscription validity period
+ * - end_timestamp: End of subscription validity period
+ * - channel: The channel ID being subscribed to
+ */
+
 typedef struct {
     decoder_id_t decoder_id;
     timestamp_t start_timestamp;
@@ -84,17 +107,47 @@ typedef struct {
     channel_id_t channel;
 } subscription_update_packet_t;
 
+
+/**
+ * @brief Encrypted container for subscription updates
+ *
+ * This structure protects subscription updates for secure transmission:
+ * - nonce: 12-byte unique value used during encryption
+ * - tag: 16-byte authentication tag to verify message integrity
+ * - ciphertext: The encrypted subscription_update_packet_t
+ *
+ */
+
 typedef struct {
     uint8_t nonce[12];
     uint8_t tag[16];
     uint8_t ciphertext[sizeof(subscription_update_packet_t)];
 } encrypted_subscription_update_packet_t;
 
+
+/**
+ * @brief Channel subscription information for reporting
+ *
+ * Used when listing active subscriptions, containing:
+ * - channel: The channel identifier
+ * - start: Beginning of subscription validity period
+ * - end: End of subscription validity period
+ */
+
 typedef struct {
     channel_id_t channel;
     timestamp_t start;
     timestamp_t end;
 } channel_info_t;
+
+/**
+ * @brief Response packet for listing active channel subscriptions
+ *
+ * Contains:
+ * - n_channels: Number of active subscriptions in the response
+ * - channel_info: Array of subscription details for each active channel
+ *   (only the first n_channels entries are valid)
+ */
 
 typedef struct {
     uint32_t n_channels;
@@ -107,6 +160,16 @@ typedef struct {
  ******************** TYPE DEFINITIONS ********************
  **********************************************************/
 
+/**
+ * @brief Internal representation of a channel subscription with integrity protection
+ *
+ * This structure maintains subscription state with tamper protection:
+ * - active: Whether this subscription slot is in use
+ * - id: The channel identifier
+ * - start_timestamp: Beginning of subscription validity period
+ * - end_timestamp: End of subscription validity period
+ * - hash: MD5 hash of the above fields to detect memory tampering
+ */
 typedef struct {
     bool active;
     channel_id_t id;
@@ -114,6 +177,17 @@ typedef struct {
     timestamp_t end_timestamp;
     uint8_t hash[MD5_HASH_SIZE];
 } channel_status_t;
+
+/**
+ * @brief Persistent storage structure saved to flash memory
+ *
+ * Contains:
+ * - first_boot: Canary value (FLASH_FIRST_BOOT) to detect initial boot
+ * - subscribed_channels: Array of all channel subscriptions
+ *
+ * This structure is persisted to flash to maintain subscriptions
+ * across power cycles and resets
+ */
 
 typedef struct {
     uint32_t first_boot; // if set to FLASH_FIRST_BOOT, device has booted before.
@@ -133,6 +207,21 @@ mxc_tmr_cfg_t tmr;
  ******************* UTILITY FUNCTIONS ********************
  **********************************************************/
 
+ /**
+ * @brief Calculate a cryptographic hash of subscription data to detect tampering
+ * 
+ * This function generates a hash derived from subscription fields:
+ * 1. Creates a temporary structure containing only the essential fields
+ *    (active status, channel ID, start and end timestamps)
+ * 2. Excludes the hash field itself to prevent circular dependencies
+ * 3. Generates an MD5 hash of the subscription data
+ * 4. Stores the resulting hash for later verification
+ * 
+ * @param subscription Pointer to the subscription data to hash
+ * @param hash_out Pointer to a buffer where the calculated hash will be stored
+ * 
+ * @return 0 on success, non-zero on hash calculation failure
+ */
 int calculate_subscription_hash(channel_status_t *subscription, uint8_t *hash_out) {
     struct {
         bool active;
@@ -151,6 +240,18 @@ int calculate_subscription_hash(channel_status_t *subscription, uint8_t *hash_ou
     return result;
 }
 
+/**
+ * @brief Verify the integrity of a subscription by checking its cryptographic hash
+ * 
+ * This function validates that a subscription hasn't been tampered with:
+ * 1. Recalculates the expected hash from the current subscription data
+ * 2. Compares the calculated hash with the stored hash
+ * 3. Logs an error message if verification fails
+ * 
+ * @param subscription Pointer to the subscription data to verify
+ * 
+ * @return 1 if verification succeeds, 0 if it fails
+ */
 int verify_subscription_hash(channel_status_t *subscription) {
     rand_delay();
     uint8_t calculated_hash[MD5_HASH_SIZE];
@@ -169,11 +270,18 @@ int verify_subscription_hash(channel_status_t *subscription) {
     return result;
 }
 
-/** @brief Checks whether the decoder is subscribed to a given channel
- *
- *  @param channel The channel number to be checked.
- *  @return 1 if the the decoder is subscribed to the channel.  0 if not.
-*/
+/**
+ * @brief Security check for channel subscription validity
+ * 
+ * Verifies that:
+ * 1. The channel is either an emergency broadcast or subscribed
+ * 2. The current time is within the subscription window
+ * 3. The subscription hash is valid (to detect tampering)
+ * 
+ * @param channel The channel ID to check
+ * @param timestamp Current timestamp to validate against subscription window
+ * @return 1 if subscription is valid, 0 otherwise
+ */
 int is_subscribed(channel_id_t channel, timestamp_t timestamp) {
     // Check if this is an emergency broadcast message
     if (channel == EMERGENCY_CHANNEL) {
@@ -214,10 +322,14 @@ uint8_t* get_channel_key(channel_id_t channel) {
     return NULL; 
 }
 
-/** @brief
+/**
+ * @brief Verify if a timestamp is valid and newer than the monotonic counter
  * 
- *  @param timestamp The timestamp of the new frame
- *  @return 1 if timestamp is authentic and monotonically increasing
+ * This function checks if the incoming timestamp is greater than our current counter
+ * to prevent replay attacks and ensure forward progression of time.
+ * 
+ * @param timestamp The timestamp from the incoming frame to validate
+ * @return 1 if timestamp is authentic and newer than current time, 0 otherwise
  */
 int verify_timestamp(timestamp_t timestamp) {
     // Counter from memory
@@ -234,10 +346,14 @@ int verify_timestamp(timestamp_t timestamp) {
     return 0;
 }
 
-/** @brief
+/**
+ * @brief Update the counter with a new validated timestamp
  * 
- *  @param timestamp The timestamp of the new frame
- *  @return 1 if update succeeded
+ * After verifying a timestamp is valid, this function updates internal
+ * counters to reflect the most recent time.
+ * 
+ * @param timestamp The new timestamp value to update
+ * @return 1 if update succeeded
  */
 int update_counter(timestamp_t timestamp) {        
     uint32_t timestamp0 = (uint32_t) (timestamp >> 32);
@@ -254,10 +370,20 @@ int update_counter(timestamp_t timestamp) {
  ********************* CORE FUNCTIONS *********************
  **********************************************************/
 
-/** @brief Lists out the actively subscribed channels over UART.
- *
- *  @return 0 if successful.
-*/
+/**
+ * @brief List all active channel subscriptions with their validity periods
+ * 
+ * This function generates a response containing all active channel subscriptions:
+ * 1. Initializes an empty response structure
+ * 2. Iterates through all subscription slots in memory
+ * 3. For each active subscription:
+ *    - Verifies the subscription hash to detect tampering
+ *    - Adds valid subscriptions to the response packet
+ *    - Skips subscriptions with failed hash verification
+ * 4. Calculates the total response length based on active subscriptions
+ * 5. Transmits the response packet to the host
+ * @return 0 on successful operation, regardless of subscription count
+ */
 int list_channels() {
     list_response_t resp;
     pkt_len_t len;
@@ -285,28 +411,24 @@ int list_channels() {
 }
 
 
-/** @brief Updates the channel subscription for a subset of channels.
- *
- *  @param pkt_len The length of the incoming packet
- *  @param update A pointer to an array of channel_update structs,
- *      which contains the channel number, start, and end timestamps
- *      for each channel being updated.
- *
- *  @note Take care to note that this system is little endian.
- *
- *  @return 0 upon success.  -1 if error.
-*/
-/** @brief Updates the channel subscription for a subset of channels.
- *
- *  @param pkt_len The length of the incoming packet
- *  @param update A pointer to an array of channel_update structs,
- *      which contains the channel number, start, and end timestamps
- *      for each channel being updated.
- *
- *  @note Take care to note that this system is little endian.
- *
- *  @return 0 upon success.  -1 if error.
-*/
+/**
+ * @brief Update channel subscription data based on encrypted subscription update
+ * 
+ * The update_subscription function manages subscription updates:
+ * 1. Decrypts the subscription update using the loaded key
+ * 2. Validates the update against these policies:
+ *    - Prevents subscribing to the emergency channel (reserved)
+ *    - Ensures start time is before end time
+ * 3. Finds an existing subscription to update or an empty slot
+ * 4. Updates the subscription with new channel ID and time bounds
+ * 5. Calculates a cryptographic hash of the subscription data
+ * 6. Persists the updated subscription to flash storage
+ * 
+ * @param pkt_len The length of the incoming encrypted packet
+ * @param encrypted_update Pointer to the encrypted subscription data
+ * 
+ * @return 0 on successful subscription update, -1 on any error
+ */
 int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_t *encrypted_update) {
     int i;
 
@@ -370,13 +492,23 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
     return 0;
 }
 
-/** @brief Processes a packet containing frame data.
- *
- *  @param pkt_len A pointer to the incoming packet.
- *  @param new_frame A pointer to the incoming packet.
- *
- *  @return 0 if successful.  -1 if data is from unsubscribed channel.
-*/
+/**
+ * @brief Process and decrypt an encrypted frame packet
+ * 
+ * The decode function performs several operations:
+ * 1. Validates the frame size is within acceptable bounds
+ * 2. Verifies the timestamp is newer than our current time
+ * 3. Checks if the decoder has a valid subscription for the requested channel
+ * 4. Retrieves the appropriate decryption key for the channel
+ * 5. Creates authentication data (AAD) from channel and timestamp
+ * 6. Attempts to decrypt and authenticate the frame
+ * 7. Updates the system timestamp if successful
+ * 
+ * @param pkt_len The length of the incoming packet
+ * @param new_frame Pointer to the encrypted frame data structure
+ * 
+ * @return 0 on successful decryption and processing, -1 on any error
+ */
 int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     char output_buf[OUTPUT_BUF_SIZE] = {0};
     uint16_t frame_size;
@@ -512,6 +644,17 @@ void init() {
 /**********************************************************
  *********************** MAIN LOOP ************************
  **********************************************************/
+
+ /**
+ * @brief Main processing loop with command dispatch
+ * 
+ * This function:
+ * 1. Initializes the system
+ * 2. Continuously reads packets from the UART
+ * 3. Dispatches commands to appropriate handler functions (LIST,DECODE,SUBSCRIBE)
+ * 4. Sets LED status to indicate current operation
+ * 
+ */
 
 int main(void) {
     char output_buf[MAX_UART_BUFFER_SIZE] = {0};

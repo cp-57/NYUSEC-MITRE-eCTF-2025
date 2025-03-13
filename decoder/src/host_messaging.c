@@ -37,6 +37,7 @@
          if (result < 0) {  // if there was an error, return immediately
              return result;
          }
+         // fixed size buffer, wrap around to accept more than expected to prevent overflow
          ((uint8_t *)buf)[i%MAX_BUF] = result;
      }
      if (len>MAX_BUF) {

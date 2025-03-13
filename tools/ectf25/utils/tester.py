@@ -254,7 +254,7 @@ def main():
                 logger.warning("Decoder stubbed out. Using encoded frame")
             else:
                 start = time.perf_counter()
-                decoded_frame = decoder.decode(encoded_frame+(2000*b"AAAAAAAAAAAAAAAAA"))
+                decoded_frame = decoder.decode(encoded_frame)
                 decoder_time += time.perf_counter() - start
 
             # warn if frame doesn't match

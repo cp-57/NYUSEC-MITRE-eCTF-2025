@@ -31,7 +31,6 @@ uint32_t bytes_to_int(uint8_t *bytes) {
            ((uint32_t)(bytes[3]) << 24);
 }
 
-
 void rand_delay(void)
 {
     uint32_t num_bytes = 4;
