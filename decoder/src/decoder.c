@@ -68,12 +68,13 @@
 #pragma pack(push, 1) // Tells the compiler not to pad the struct members
 // for more information on what struct padding does, see:
 // https://www.gnu.org/software/c-intro-and-ref/manual/html_node/Structure-Layout.html
+
 typedef struct {
     channel_id_t channel; 
     uint64_t timestamp; 
     uint8_t nonce[12];
-    uint8_t ciphertext[64]; 
     uint8_t tag[16];
+    uint8_t ciphertext[64]; 
 } frame_packet_t;
 
 typedef struct {
@@ -85,8 +86,8 @@ typedef struct {
 
 typedef struct {
     uint8_t nonce[12];
-    uint8_t ciphertext[sizeof(subscription_update_packet_t)];
     uint8_t tag[16];
+    uint8_t ciphertext[sizeof(subscription_update_packet_t)];
 } encrypted_subscription_update_packet_t;
 
 typedef struct {
@@ -381,6 +382,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     uint16_t frame_size;
     channel_id_t channel;
 
+
     frame_size = pkt_len - (sizeof(new_frame->channel) + sizeof(new_frame->timestamp) + sizeof(new_frame->nonce)
          + sizeof(new_frame->tag));
     channel = new_frame->channel;
@@ -433,6 +435,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
     int decrypt_status = decrypt_sym(decryption_key, new_frame->nonce, aad, 12, new_frame->ciphertext,
             frame_size, new_frame->tag, decrypted);
 
+
     rand_delay();
 
     if (decrypt_status == 0) {
@@ -440,6 +443,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
         update_counter(timestamp);
         return 0;
     }
+    print_error("Frame failed decryption...\n");
     return -1;
 }
 

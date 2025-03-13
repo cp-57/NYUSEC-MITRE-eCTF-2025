@@ -51,7 +51,7 @@ class Encoder:
 
         ciphertext, tag = cipher.encrypt_and_digest(frame)
 
-        return header + cipher.nonce + ciphertext + tag
+        return header + cipher.nonce + tag + ciphertext
 
 
 def main():

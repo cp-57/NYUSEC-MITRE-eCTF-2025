@@ -40,7 +40,7 @@ def gen_subscription(
 
     ciphertext, tag = cipher.encrypt_and_digest(subscription_update_package)
 
-    return cipher.nonce + ciphertext + tag
+    return cipher.nonce + tag + ciphertext
 
 
 def parse_args():
