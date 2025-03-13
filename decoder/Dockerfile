@@ -31,6 +31,14 @@ WORKDIR /decoder
 COPY entry.sh ./
 RUN chmod +x entry.sh
 
+#COPY pwndbg_2025.02.19_arm64.deb ./
+#RUN apt install ./pwndbg_2025.02.19_arm64.deb
+RUN git clone https://github.com/pwndbg/pwndbg  
+WORKDIR /decoder/pwndbg  
+RUN ./setup.sh
+
+
+WORKDIR /decoder
 ENTRYPOINT ["./entry.sh"]
 
 
