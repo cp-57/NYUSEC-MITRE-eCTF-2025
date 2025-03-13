@@ -201,6 +201,7 @@ flash_entry_t decoder_status;
 
 timestamp_t prev_time;
 uint8_t prev_time_hash[MD5_HASH_SIZE];
+bool first_timestamp;
 
 /**********************************************************
  ******************* UTILITY FUNCTIONS ********************
@@ -332,21 +333,26 @@ uint8_t* get_channel_key(channel_id_t channel) {
  */
 int verify_timestamp(timestamp_t timestamp) {
     // Check timestamp sequence (increment only forward) 
-    uint8_t prev_time_checker[MD5_HASH_SIZE];
-    if (!hash(&prev_time, sizeof(timestamp_t), prev_time_checker)) {
-        print_error("Hash calculation failed\n");
-        return 0;
-    }
-    
-    if (!(memcmp(prev_time_checker, prev_time_hash, MD5_HASH_SIZE) == 0)) {
-        print_error("Hash verification FAILED\n");
-        return 0;
-    }
+    if (!first_timestamp) {
+        uint8_t prev_time_checker[MD5_HASH_SIZE];
+        if (!hash(&prev_time, sizeof(timestamp_t), prev_time_checker)) {
+            print_error("Hash calculation failed\n");
+            return 0;
+        }
+        
+        if (!(memcmp(prev_time_checker, prev_time_hash, MD5_HASH_SIZE) == 0)) {
+            print_error("Hash verification FAILED\n");
+            return 0;
+        }
 
-    if (timestamp > prev_time) {
+        if (timestamp > prev_time) {
+            return 1;
+        }
+        return 0;
+    } else {
+        first_timestamp = false;
         return 1;
     }
-    return 0;
 }
 
 /**
@@ -623,6 +629,8 @@ void init() {
         // if uart fails to initialize, do not continue to execute
         while (1);
     }
+
+    first_timestamp = true;
 }
 
 
