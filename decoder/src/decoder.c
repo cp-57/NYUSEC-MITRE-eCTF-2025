@@ -573,7 +573,7 @@ int decode(pkt_len_t pkt_len, frame_packet_t *new_frame) {
 
     if (decrypt_status == 0) {
         write_packet(DECODE_MSG, decrypted, frame_size);
-        update_counter();
+        update_counter(timestamp);
         return 0;
     }
     print_error("Frame failed decryption...\n");
