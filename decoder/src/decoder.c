@@ -463,6 +463,12 @@ int update_subscription(pkt_len_t pkt_len, encrypted_subscription_update_packet_
         return -1;
     }
 
+    if (update->decoder_id != DECODER_ID) {
+        STATUS_LED_RED();
+        print_error("Failed to update subscription - cannot subscribe to a different decoder ID\n");
+        return -1;
+    }
+
     for (i = 0; i < MAX_CHANNEL_COUNT; i++) {
         if (decoder_status.subscribed_channels[i].id == update->channel || !decoder_status.subscribed_channels[i].active) {
             if (update->start_timestamp > update->end_timestamp) {
